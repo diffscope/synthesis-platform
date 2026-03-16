@@ -1,0 +1,64 @@
+find_package(SWIG REQUIRED)
+
+set(APPLICATION_BINDINGS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/bindings)
+set(APPLICATION_SWIG_INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/swig/native.i)
+set(APPLICATION_SWIG_GO_FILE ${APPLICATION_BINDINGS_DIR}/native.go)
+set(APPLICATION_SWIG_WRAPPER_FILE ${APPLICATION_BINDINGS_DIR}/native_wrap.cxx)
+
+file(MAKE_DIRECTORY ${APPLICATION_BINDINGS_DIR})
+
+file(GLOB_RECURSE _src src/*.cpp)
+
+add_library(dssp_native SHARED
+	${_src}
+)
+
+target_include_directories(dssp_native
+	PUBLIC
+		${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+set_target_properties(dssp_native PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+)
+
+file(GLOB_RECURSE _headers include/*.h)
+
+add_custom_command(
+	OUTPUT
+		${APPLICATION_SWIG_GO_FILE}
+		${APPLICATION_SWIG_WRAPPER_FILE}
+	COMMAND
+		${SWIG_EXECUTABLE}
+			-go
+			-cgo
+			-c++
+			-intgosize 64
+			-module native
+			-package bindings
+			-I${CMAKE_CURRENT_SOURCE_DIR}/include
+			-outdir ${APPLICATION_BINDINGS_DIR}
+			-o ${APPLICATION_SWIG_WRAPPER_FILE}
+			${APPLICATION_SWIG_INTERFACE}
+	DEPENDS
+		${APPLICATION_SWIG_INTERFACE}
+		${_headers}
+	COMMENT "Generating Go/C++ bindings via SWIG"
+	VERBATIM
+)
+
+add_custom_target(generate_swig_bindings
+	DEPENDS
+		${APPLICATION_SWIG_GO_FILE}
+		${APPLICATION_SWIG_WRAPPER_FILE}
+)
+
+if(APPLICATION_INSTALL)
+	install(TARGETS dssp_native
+		RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" OPTIONAL
+		LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" OPTIONAL
+		ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}" OPTIONAL
+	)
+endif()
