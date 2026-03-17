@@ -23,11 +23,21 @@ if(APPLICATION_INSTALL)
 	include(CMakePackageConfigHelpers)
 endif()
 
+find_package(qmsetup CONFIG REQUIRED)
+
+qm_import(Filesystem)
+
+if(NOT DEFINED QMSETUP_BUILD_DIR)
+	set(QMSETUP_BUILD_DIR "${CMAKE_BINARY_DIR}/out")
+endif()
+
+qm_init_directories()
+
 add_subdirectory(native)
 
 find_program(GO_EXECUTABLE go REQUIRED)
 
-set(APPLICATION_OUTPUT_DIR ${CMAKE_BINARY_DIR})
+set(APPLICATION_OUTPUT_DIR ${QMSETUP_BUILD_DIR}/bin)
 set(APPLICATION_EXECUTABLE ${APPLICATION_OUTPUT_DIR}/dssp${CMAKE_EXECUTABLE_SUFFIX})
 set(APPLICATION_GO_STAMP ${CMAKE_BINARY_DIR}/CMakeFiles/go_build.stamp)
 

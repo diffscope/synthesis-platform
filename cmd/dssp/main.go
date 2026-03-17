@@ -27,6 +27,7 @@ import (
 
 	"diffscope-synthesis-platform/internal/appinfo"
 	"diffscope-synthesis-platform/internal/controller"
+	"diffscope-synthesis-platform/internal/utils"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -106,6 +107,7 @@ func newRootCmd() (*cobra.Command, error) {
 		serveCmd,
 		newPullCmd(),
 		newInstallCmd(),
+		newListDevicesCmd(),
 	)
 
 	return rootCmd, nil
@@ -191,4 +193,24 @@ func newInstallCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newListDevicesCmd() *cobra.Command {
+	listDevicesCmd := &cobra.Command{
+		Use:   "list-devices",
+		Short: "List available execution devices",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			shouldPrintAsJSON, err := cmd.Flags().GetBool("json")
+			if err != nil {
+				return err
+			}
+
+			utils.ListDevices(shouldPrintAsJSON)
+			return nil
+		},
+	}
+
+	listDevicesCmd.Flags().Bool("json", false, "Output device list as JSON")
+
+	return listDevicesCmd
 }

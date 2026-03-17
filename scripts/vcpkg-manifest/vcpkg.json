@@ -1,0 +1,46 @@
+{
+    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+    "dependencies": [
+        "qmsetup",
+        {
+            "name": "language-manager",
+            "features": [
+                "install-ort"
+            ]
+        }
+    ],
+    "features": {
+        "cuda11": {
+            "supports": "!osx",
+            "description": "Build with CUDA 11 support",
+            "dependencies": [
+                {
+                    "name": "language-manager",
+                    "features": [
+                        "cuda11"
+                    ]
+                }
+            ]
+        },
+        "cuda12": {
+            "supports": "!osx",
+            "description": "Build with CUDA 12 support",
+            "dependencies": [
+                {
+                    "name": "language-manager",
+                    "features": [
+                        "cuda12"
+                    ]
+                }
+            ]
+        }
+    },
+    "vcpkg-configuration": {
+        "overlay-ports": [
+            "../vcpkg/ports"
+        ],
+        "overlay-triplets": [
+            "../vcpkg/triplets"
+        ]
+    }
+}

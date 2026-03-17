@@ -7,21 +7,38 @@ set(APPLICATION_SWIG_WRAPPER_FILE ${APPLICATION_BINDINGS_DIR}/native_wrap.cxx)
 
 file(MAKE_DIRECTORY ${APPLICATION_BINDINGS_DIR})
 
+find_package(LangCore CONFIG REQUIRED)
+
+get_filename_component(LANGCORE_PREFIX_DIR "${LangCore_DIR}/../.." ABSOLUTE)
+set(LANGCORE_PLUGINS_DIR "${LANGCORE_PREFIX_DIR}/lib/plugins")
+set(LANGCORE_G2P_PACKAGES_DIR "${LangCore_DIR}/G2pPackages")
+
 file(GLOB_RECURSE _src src/*.cpp)
 
 add_library(dssp_native SHARED
 	${_src}
 )
 
-target_include_directories(dssp_native
-	PUBLIC
-		${CMAKE_CURRENT_SOURCE_DIR}/include
+set(_links)
+if(WIN32)
+	list(APPEND _links dxgi.lib)
+endif()
+
+qm_configure_target(dssp_native
+	LINKS_PRIVATE LangCore::LangCore ${_links}
+	INCLUDE_PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-set_target_properties(dssp_native PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+add_custom_command(TARGET dssp_native POST_BUILD
+	COMMAND "${CMAKE_COMMAND}" -E copy_directory
+	"${LANGCORE_PLUGINS_DIR}"
+	"$<TARGET_FILE_DIR:dssp_native>/../lib/plugins"
+)
+
+add_custom_command(TARGET dssp_native POST_BUILD
+	COMMAND "${CMAKE_COMMAND}" -E copy_directory
+	"${LANGCORE_G2P_PACKAGES_DIR}"
+	"$<TARGET_FILE_DIR:dssp_native>/../share/G2pPackages"
 )
 
 file(GLOB_RECURSE _headers include/*.h)
@@ -60,5 +77,13 @@ if(APPLICATION_INSTALL)
 		RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" OPTIONAL
 		LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" OPTIONAL
 		ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}" OPTIONAL
+	)
+
+	install(DIRECTORY "${LANGCORE_PLUGINS_DIR}"
+		DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+	)
+
+	install(DIRECTORY "${LANGCORE_G2P_PACKAGES_DIR}"
+		DESTINATION "${CMAKE_INSTALL_DATADIR}"
 	)
 endif()
