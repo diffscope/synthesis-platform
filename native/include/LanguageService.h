@@ -19,6 +19,7 @@
 #ifndef DSSP_LANGUAGESERVICE_H
 #define DSSP_LANGUAGESERVICE_H
 
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -29,13 +30,13 @@ struct LanguageServiceInitializationError {
 		return m_message;
 	}
 private:
-	explicit LanguageServiceInitializationError(std::string message) : m_message(std::move(message)) {}
+	friend class LanguageService;
 	std::string m_message;
 };
 
 class LanguageService {
 public:
-	static LanguageServiceInitializationError *initialize(ExecutionProviderType ep, int deviceIndex);
+	static const LanguageServiceInitializationError *Initialize(ExecutionProviderType ep, int deviceIndex);
 };
 
 #endif //DSSP_LANGUAGESERVICE_H

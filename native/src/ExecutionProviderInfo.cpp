@@ -22,12 +22,12 @@
 #include <iomanip>
 #include <sstream>
 
-#ifdef WIN32
+#ifdef _WIN32
 #  include <dxgi1_6.h>
 #  include <wrl/client.h>
-#endif
+#endif // _WIN32
 
-#ifdef WIN32
+#ifdef _WIN32
 
 using Microsoft::WRL::ComPtr;
 
@@ -76,12 +76,13 @@ static std::string getDmlDeviceId(const DXGI_ADAPTER_DESC1 &desc) {
 	return ss.str();
 }
 
-#endif
+#endif // _WIN32
 
-std::vector<ExecutionProviderInfo> ExecutionProviderInfo::GetExecutionProviders() {
-	std::vector<ExecutionProviderInfo> list;
+const std::vector<ExecutionProviderInfo> &ExecutionProviderInfo::GetExecutionProviders() {
+	static std::vector<ExecutionProviderInfo> list;
+	list.clear();
 
-	static ExecutionProviderInfo cpuExecutionProvider {
+	static const ExecutionProviderInfo cpuExecutionProvider {
 		ExecutionProviderType::CPU,
 		{
 			DeviceInfo {
@@ -97,7 +98,7 @@ std::vector<ExecutionProviderInfo> ExecutionProviderInfo::GetExecutionProviders(
 
 	// TODO cuda
 
-#ifdef WIN32
+#ifdef _WIN32
 	std::vector<DeviceInfo> dmlDevices;
 	ComPtr<IDXGIFactory6> dxgiFactory;
 	if (!FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory)))) {
@@ -127,10 +128,10 @@ std::vector<ExecutionProviderInfo> ExecutionProviderInfo::GetExecutionProviders(
 		ExecutionProviderType::DirectML,
 		std::move(dmlDevices)
 	});
-#endif
+#endif // _WIN32
 
 #ifdef __APPLE__
-	static ExecutionProviderInfo coreMLExecutionProvider {
+	static const ExecutionProviderInfo coreMLExecutionProvider {
 		ExecutionProviderType::CoreML,
 		{
 			DeviceInfo {
@@ -143,20 +144,20 @@ std::vector<ExecutionProviderInfo> ExecutionProviderInfo::GetExecutionProviders(
 		}
 	};
 	list.push_back(coreMLExecutionProvider);
-#endif
+#endif // __APPLE__
 
 	return list;
 }
 
-DeviceInfo ExecutionProviderInfo::GetDefaultDevice() {
-	static DeviceInfo cpuDeviceInfo {
+const DeviceInfo &ExecutionProviderInfo::GetDefaultDevice() {
+	static const DeviceInfo cpuDeviceInfo {
 		ExecutionProviderType::CPU,
 		0,
 		{},
 		{},
 		0,
 	};
-#ifdef WIN32
+#ifdef _WIN32
 	ComPtr<IDXGIFactory6> dxgiFactory;
 	if (FAILED(CreateDXGIFactory(IID_PPV_ARGS(&dxgiFactory)))) {
 		return cpuDeviceInfo;
@@ -211,19 +212,22 @@ DeviceInfo ExecutionProviderInfo::GetDefaultDevice() {
 			}
 		}
 	}
-	return preferredDeviceInfo.Type() != ExecutionProviderType::CPU ? preferredDeviceInfo : alternativeDeviceInfo;
+	static DeviceInfo dmlDeviceInfo;
+	dmlDeviceInfo = preferredDeviceInfo.Type() != ExecutionProviderType::CPU ? preferredDeviceInfo : alternativeDeviceInfo;
+	return dmlDeviceInfo;
 
-#endif
+#endif // _WIN32
 
 #ifdef __APPLE__
-	return {
+	 static const DeviceInfo coreMLExecutionProvider {
 		ExecutionProviderType::CoreML,
 		0,
 		{},
 		{},
 		0,
 	}
-#endif
+	return coreMLExecutionProvider;
+#endif // __APPLE__
 
 	// TODO cuda
 

@@ -46,24 +46,9 @@ type jsonListDevicesResponse struct {
 	DefaultDevice      jsonDeviceInfo              `json:"default_device"`
 }
 
-func executionProviderTypeToString(providerType native.ExecutionProviderType) string {
-	switch providerType {
-	case native.ExecutionProviderType_CPU:
-		return "cpu"
-	case native.ExecutionProviderType_CUDA:
-		return "cuda"
-	case native.ExecutionProviderType_DirectML:
-		return "directml"
-	case native.ExecutionProviderType_CoreML:
-		return "coreml"
-	default:
-		panic("Unknown execution provider")
-	}
-}
-
 func toJSONDeviceInfo(device native.DeviceInfo) jsonDeviceInfo {
 	return jsonDeviceInfo{
-		Type:        executionProviderTypeToString(device.Type()),
+		Type:        device.Type().String(),
 		Index:       device.Index(),
 		Description: device.Description(),
 		ID:          device.Id(),
@@ -102,7 +87,7 @@ func ListDevices(shouldPrintAsJson bool) {
 			provider := executionProviders.Get(int(i))
 			providerDevices := provider.Devices()
 			jsonProvider := jsonExecutionProviderInfo{
-				Type:    executionProviderTypeToString(provider.Type()),
+				Type:    provider.Type().String(),
 				Devices: make([]jsonDeviceInfo, 0, providerDevices.Size()),
 			}
 
@@ -126,7 +111,7 @@ func ListDevices(shouldPrintAsJson bool) {
 			providerType := provider.Type()
 			tw := table.NewWriter()
 			tw.SetStyle(twStyle)
-			providerName := executionProviderTypeToString(providerType)
+			providerName := providerType.String()
 
 			if providerType == native.ExecutionProviderType_CPU || providerType == native.ExecutionProviderType_CoreML {
 				tw.AppendRow(
@@ -161,7 +146,7 @@ func ListDevices(shouldPrintAsJson bool) {
 		tw := table.NewWriter()
 		tw.SetStyle(twStyle)
 		providerType := defaultDevice.Type()
-		providerName := executionProviderTypeToString(providerType)
+		providerName := providerType.String()
 		if providerType == native.ExecutionProviderType_CPU || providerType == native.ExecutionProviderType_CoreML {
 			tw.AppendRow(
 				table.Row{providerName},

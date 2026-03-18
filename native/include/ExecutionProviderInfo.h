@@ -40,12 +40,12 @@ public:
 		return m_type;
 	}
 
-	std::vector<DeviceInfo> Devices() const {
+	const std::vector<DeviceInfo> &Devices() const {
 		return m_devices;
 	}
 
-	static std::vector<ExecutionProviderInfo> GetExecutionProviders();
-	static DeviceInfo GetDefaultDevice();
+	static const std::vector<ExecutionProviderInfo> &GetExecutionProviders();
+	static const DeviceInfo &GetDefaultDevice();
 
 private:
 	inline ExecutionProviderInfo(ExecutionProviderType type, std::vector<DeviceInfo> devices);

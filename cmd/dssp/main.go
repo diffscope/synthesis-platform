@@ -148,9 +148,7 @@ func newServeCmd() (*cobra.Command, error) {
 		Use:   "serve",
 		Short: "Start DSSP service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			host := viper.GetString("host")
-			port := viper.GetInt("port")
-			return controller.StartServer(host, port)
+			return controller.StartServer()
 		},
 	}
 

@@ -19,14 +19,45 @@
 package controller
 
 import (
+	"diffscope-synthesis-platform/native"
 	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
 )
 
-func StartServer(host string, port int) error {
+func StartLanguageService() error {
+	ep, err := native.ExecutionProviderTypeFromString(viper.GetString("execution_provider.type"))
+	if err != nil {
+		return err
+	}
+	deviceIndex := viper.GetInt("execution_provider.device_index")
+	if err := native.LanguageServiceInitialize(ep, deviceIndex); err != nil {
+		return err
+	}
+	return nil
+}
+
+func StartRouter() error {
 	router := gin.Default()
 	router.GET("/api/info", getApplicationInfo)
 
+	host := viper.GetString("host")
+	port := viper.GetInt("port")
+
 	return router.Run(fmt.Sprintf("%s:%d", host, port))
+}
+
+func StartServer() error {
+	defaultDevice := native.ExecutionProviderInfoGetDefaultDevice()
+	viper.SetDefault("execution_provider.type", defaultDevice.Type().String())
+	viper.SetDefault("execution_provider.device_index", defaultDevice.Index())
+
+	if err := StartLanguageService(); err != nil {
+		return err
+	}
+	if err := StartRouter(); err != nil {
+		return err
+	}
+	return nil
 }

@@ -16,19 +16,37 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>. *
  **************************************************************************/
 
-%module native
+package native
 
-%{
-#include "ExecutionProviderInfo.h"
-#include "LanguageService.h"
-%}
+import (
+	"fmt"
+	"strings"
+)
 
-%include "stdint.i"
-%include "std_string.i"
-%include "std_vector.i"
+func (e ExecutionProviderType) String() string {
+	switch e {
+	case ExecutionProviderType_CPU:
+		return "cpu"
+	case ExecutionProviderType_CUDA:
+		return "cuda"
+	case ExecutionProviderType_DirectML:
+		return "directml"
+	case ExecutionProviderType_CoreML:
+		return "coreml"
+	}
+	panic(fmt.Sprintf("Unreachable invalid ExecutionProviderType: %d", e))
+}
 
-%include "ExecutionProviderInfo.h"
-%include "LanguageService.h"
-
-%template(ExecutionProviderInfoVector) std::vector<ExecutionProviderInfo>;
-%template(DeviceInfoVector) std::vector<DeviceInfo>;
+func ExecutionProviderTypeFromString(s string) (ExecutionProviderType, error) {
+	switch strings.ToLower(s) {
+	case "cpu":
+		return ExecutionProviderType_CPU, nil
+	case "cuda":
+		return ExecutionProviderType_CUDA, nil
+	case "directml":
+		return ExecutionProviderType_DirectML, nil
+	case "coreml":
+		return ExecutionProviderType_CoreML, nil
+	}
+	return 0, fmt.Errorf("Invalid execution provider type: %s", s)
+}

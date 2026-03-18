@@ -10,7 +10,7 @@ file(MAKE_DIRECTORY ${APPLICATION_BINDINGS_DIR})
 find_package(LangCore CONFIG REQUIRED)
 
 get_filename_component(LANGCORE_PREFIX_DIR "${LangCore_DIR}/../.." ABSOLUTE)
-set(LANGCORE_PLUGINS_DIR "${LANGCORE_PREFIX_DIR}/lib/plugins")
+set(LANGCORE_PLUGINS_DIR "$<TARGET_FILE_DIR:LangCore::LangCore>/../lib/plugins")
 set(LANGCORE_G2P_PACKAGES_DIR "${LangCore_DIR}/G2pPackages")
 
 file(GLOB_RECURSE _src src/*.cpp include/*.h)
