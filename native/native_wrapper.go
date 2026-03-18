@@ -34,7 +34,7 @@ func (e ExecutionProviderType) String() string {
 	case ExecutionProviderType_CoreML:
 		return "coreml"
 	}
-	panic(fmt.Sprintf("Unreachable invalid ExecutionProviderType: %d", e))
+	panic(fmt.Sprintf("unreachable invalid ExecutionProviderType: %d", e))
 }
 
 func ExecutionProviderTypeFromString(s string) (ExecutionProviderType, error) {
@@ -48,5 +48,5 @@ func ExecutionProviderTypeFromString(s string) (ExecutionProviderType, error) {
 	case "coreml":
 		return ExecutionProviderType_CoreML, nil
 	}
-	return 0, fmt.Errorf("Invalid execution provider type: %s", s)
+	return 0, fmt.Errorf("invalid execution provider type: %s", s)
 }

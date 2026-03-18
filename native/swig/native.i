@@ -30,5 +30,8 @@
 %include "ExecutionProviderInfo.h"
 %include "LanguageService.h"
 
+%template(StringVector) std::vector<std::string>;
 %template(ExecutionProviderInfoVector) std::vector<ExecutionProviderInfo>;
 %template(DeviceInfoVector) std::vector<DeviceInfo>;
+%template(LanguageServiceTaggedNoteVector) std::vector<LanguageServiceTaggedNote *>;
+%template(LanguageServiceConvertedNoteVector) std::vector<LanguageServiceConvertedNote *>;

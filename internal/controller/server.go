@@ -32,8 +32,9 @@ func StartLanguageService() error {
 		return err
 	}
 	deviceIndex := viper.GetInt("execution_provider.device_index")
-	if err := native.LanguageServiceInitialize(ep, deviceIndex); err != nil {
-		return err
+	if nativeErr := native.LanguageServiceInitialize(ep, deviceIndex); nativeErr.Swigcptr() != 0 {
+	    defer native.DeleteLanguageServiceInitializationError(nativeErr)
+		return fmt.Errorf("failed to initialize native language service: %s", nativeErr.Error())
 	}
 	return nil
 }
@@ -41,6 +42,7 @@ func StartLanguageService() error {
 func StartRouter() error {
 	router := gin.Default()
 	router.GET("/api/info", getApplicationInfo)
+	router.POST("/api/language", postLanguage)
 
 	host := viper.GetString("host")
 	port := viper.GetInt("port")

@@ -18,12 +18,17 @@
 
 #include "LanguageService.h"
 
+#include <algorithm>
 #include <filesystem>
 
 #include <stdcorelib/str.h>
 #include <stdcorelib/system.h>
 
 #include <LangCore/Core/Manager.h>
+#include <LangCore/Module/Module.h>
+#include <LangCore/Task/TaskFactoryPlugin.h>
+
+#include <LangPlugins/Api/Drivers/Onnx/1/OnnxDriverApiL1.h>
 
 #include <ExecutionProviderInfo.h>
 
@@ -43,6 +48,22 @@ std::filesystem::path getPackagesRootDirectory() {
 #endif
 }
 
+LangPlugins::Api::Onnx::L1::ExecutionProvider parseExecutionProvider(ExecutionProviderType ep) {
+    if (ep == ExecutionProviderType::CPU) {
+        return LangPlugins::Api::Onnx::L1::ExecutionProvider::CPUExecutionProvider;
+    }
+    if (ep == ExecutionProviderType::CUDA) {
+        return LangPlugins::Api::Onnx::L1::ExecutionProvider::CUDAExecutionProvider;
+    }
+    if (ep == ExecutionProviderType::DirectML) {
+        return LangPlugins::Api::Onnx::L1::ExecutionProvider::DMLExecutionProvider;
+    }
+    if (ep == ExecutionProviderType::CoreML) {
+        return LangPlugins::Api::Onnx::L1::ExecutionProvider::CoreMLExecutionProvider;
+    }
+    return LangPlugins::Api::Onnx::L1::ExecutionProvider::CPUExecutionProvider;
+}
+
 const LanguageServiceInitializationError *LanguageService::Initialize(ExecutionProviderType ep, int deviceIndex) {
     const auto langMgr = LangCore::Manager::instance();
 
@@ -55,17 +76,85 @@ const LanguageServiceInitializationError *LanguageService::Initialize(ExecutionP
     const std::filesystem::path packagesRootDir = getPackagesRootDirectory();
     langMgr->addPackagePath(packagesRootDir);
 
-    // if (const auto onnxDriverInitialized = initializeOnnxDriver(langMgr, "cpu", 0, true); !onnxDriverInitialized)
-    //     std::cerr << "Failed to initializeOnnxDriver" << std::endl;
+    const auto onnxDriverPlugin = langMgr->plugin<LangCore::DriverFactoryPlugin>("onnx");
+    if (!onnxDriverPlugin) {
+        std::cerr << "Failed to load ONNX inference driver" << std::endl;
+    } else {
+        const auto onnxDriver = onnxDriverPlugin->create();
+        const auto onnxArgs = LangCore::NO<LangPlugins::Api::Onnx::L1::DriverInitArgs>::create();
+
+        const auto ep_ = parseExecutionProvider(ep);
+        onnxArgs->ep = ep_;
+        const auto ortParentPath = onnxDriverPlugin->path().parent_path() / _TSTR("runtimes") / _TSTR("onnx");
+        onnxArgs->runtimePath = ep_ == LangPlugins::Api::Onnx::L1::CUDAExecutionProvider ? ortParentPath / _TSTR("cuda") : ortParentPath / _TSTR("default");
+
+        onnxArgs->loadFromProgress = false;
+        onnxArgs->deviceIndex = deviceIndex;
+
+        if (const auto exp = onnxDriver->initialize(onnxArgs); !exp) {
+            std::cerr << "Failed to initialize ONNX driver: " << exp.error().message() << std::endl;
+        }
+
+        auto &driverCategory = *langMgr->category("driver");
+        driverCategory.addObject("g2pOnnxDriver", onnxDriver);
+    }
 
     std::string msg;
     langMgr->initialize(msg);
 
-    static LanguageServiceInitializationError error;
     if (langMgr->initialized()) {
         return nullptr;
     } else {
-        error.m_message = msg;
-        return &error;
+        auto error = new LanguageServiceInitializationError;
+        error->m_message = msg;
+        return error;
+    }
+}
+
+std::vector<std::string> LanguageService::Split_ReturnValueNeedsDeferDelete(const std::vector<std::string> &input) {
+    return LangCore::Manager::instance()->split(input);
+}
+
+void LanguageService::TagInPlace(const std::vector<LanguageServiceTaggedNote *> &input, const std::vector<std::string> &preferredLanguages, const std::vector<std::string> &graphemeTypePriority) {
+    auto langMgr = LangCore::Manager::instance();
+    auto originalOrder = langMgr->defaultTaggerOrder();
+    if (!graphemeTypePriority.empty())
+        langMgr->setDefaultOrder(graphemeTypePriority);
+    std::vector<std::string> input_;
+    input_.reserve(input.size());
+    std::ranges::transform(input, std::back_inserter(input_), [](LanguageServiceTaggedNote *x) {
+        return x->Lyric();
+    });
+    auto output = langMgr->tag(input_, false, false, preferredLanguages);
+    assert(output.size() == input.size());
+    for (size_t i = 0; i < output.size(); i++) {
+        input[i]->m_language = std::move(output[i].language);
+        input[i]->m_lyric = std::move(output[i].lyric);
+        input[i]->m_graphemeType = std::move(output[i].tag);
+        input[i]->m_nonTextOmittable = output[i].discard;
+    }
+    langMgr->setDefaultOrder(originalOrder);
+}
+
+void LanguageService::ConvertInPlace(const std::vector<LanguageServiceConvertedNote *> &input) {
+    auto langMgr = LangCore::Manager::instance();
+    std::vector<std::unique_ptr<LangCore::G2pInput>> input_;
+    input_.reserve(input.size());
+    std::ranges::transform(input, std::back_inserter(input_), [](LanguageServiceConvertedNote *x) {
+        return std::make_unique<LangCore::G2pInput>(x->Lyric(), x->GraphemeType());
+    });
+    std::vector<LangCore::G2pInput *> ptrInput;
+    ptrInput.reserve(input_.size());
+    std::ranges::transform(input_, std::back_inserter(ptrInput), [](auto &x) {
+        return x.get();
+    });
+    auto output = langMgr->convert(ptrInput);
+    assert(output.size() == input.size());
+    for (size_t i = 0; i < output.size(); i++) {
+        input[i]->m_lyric = std::move(output[i].lyric);
+        input[i]->m_graphemeType = std::move(output[i].g2pId);
+        input[i]->m_pronunciation = std::move(output[i].pronunciation);
+        input[i]->m_candidatePronunciations = std::move(output[i].candidates);
+        input[i]->m_error = output[i].error;
     }
 }

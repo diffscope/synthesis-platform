@@ -19,9 +19,8 @@
 #ifndef DSSP_LANGUAGESERVICE_H
 #define DSSP_LANGUAGESERVICE_H
 
-#include <optional>
 #include <string>
-#include <utility>
+#include <vector>
 
 enum class ExecutionProviderType;
 
@@ -34,9 +33,67 @@ private:
 	std::string m_message;
 };
 
+struct LanguageServiceTaggedNote {
+	std::string Language() const {
+		return m_language;
+	}
+	std::string Lyric() const {
+		return m_lyric;
+	}
+	void SetLyric(std::string lyric) {
+		m_lyric = std::move(lyric);
+	}
+	std::string GraphemeType() const {
+		return m_graphemeType;
+	}
+	bool IsNonTextOmittable() const {
+		return m_nonTextOmittable;
+	}
+private:
+	friend class LanguageService;
+	std::string m_language;
+	std::string m_lyric;
+	std::string m_graphemeType;
+	bool m_nonTextOmittable;
+};
+
+struct LanguageServiceConvertedNote {
+	std::string Lyric() const {
+		return m_lyric;
+	}
+	void SetLyric(std::string lyric) {
+		m_lyric = std::move(lyric);
+	}
+	std::string GraphemeType() const {
+		return m_graphemeType;
+	}
+	void SetGraphemeType(std::string graphemeType) {
+		m_graphemeType = std::move(graphemeType);
+	}
+	std::string Pronunciation() const {
+		return m_pronunciation;
+	}
+	std::vector<std::string> CandidatePronunciations() const {
+		return m_candidatePronunciations;
+	}
+	bool IsError() const {
+		return m_error;
+	}
+private:
+	friend class LanguageService;
+	std::string m_lyric;
+	std::string m_graphemeType;
+	std::string m_pronunciation;
+	std::vector<std::string> m_candidatePronunciations;
+	bool m_error;
+};
+
 class LanguageService {
 public:
 	static const LanguageServiceInitializationError *Initialize(ExecutionProviderType ep, int deviceIndex);
+	static std::vector<std::string> Split_ReturnValueNeedsDeferDelete(const std::vector<std::string> &input);
+	static void TagInPlace(const std::vector<LanguageServiceTaggedNote *> &input, const std::vector<std::string> &preferredLanguages, const std::vector<std::string> &graphemeTypePriority);
+	static void ConvertInPlace(const std::vector<LanguageServiceConvertedNote *> &input);
 };
 
 #endif //DSSP_LANGUAGESERVICE_H
