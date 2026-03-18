@@ -7,7 +7,7 @@ The synthesis backend for DiffScope (under development)
 - CMake
 - Go
 - SWIG
-- GCC/Clang (MSVC is not supported due to Cgo limitations)
+- Both MSVC and MinGW on Windows
 
 ## Building
 

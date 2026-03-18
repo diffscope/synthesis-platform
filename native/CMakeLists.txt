@@ -1,9 +1,9 @@
 find_package(SWIG REQUIRED)
 
-set(APPLICATION_BINDINGS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/bindings)
+set(APPLICATION_BINDINGS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(APPLICATION_SWIG_INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/swig/native.i)
 set(APPLICATION_SWIG_GO_FILE ${APPLICATION_BINDINGS_DIR}/native.go)
-set(APPLICATION_SWIG_WRAPPER_FILE ${APPLICATION_BINDINGS_DIR}/native_wrap.cxx)
+set(APPLICATION_SWIG_WRAPPER_FILE ${CMAKE_CURRENT_BINARY_DIR}/native_wrap.cxx)
 
 file(MAKE_DIRECTORY ${APPLICATION_BINDINGS_DIR})
 
@@ -13,21 +13,27 @@ get_filename_component(LANGCORE_PREFIX_DIR "${LangCore_DIR}/../.." ABSOLUTE)
 set(LANGCORE_PLUGINS_DIR "${LANGCORE_PREFIX_DIR}/lib/plugins")
 set(LANGCORE_G2P_PACKAGES_DIR "${LangCore_DIR}/G2pPackages")
 
-file(GLOB_RECURSE _src src/*.cpp)
+file(GLOB_RECURSE _src src/*.cpp include/*.h)
 
 add_library(dssp_native SHARED
 	${_src}
+	${APPLICATION_SWIG_WRAPPER_FILE}
 )
-
-set(_links)
-if(WIN32)
-	list(APPEND _links dxgi.lib)
-endif()
 
 qm_configure_target(dssp_native
-	LINKS_PRIVATE LangCore::LangCore ${_links}
+	LINKS_PRIVATE
+		LangCore::LangCore
+		$<$<PLATFORM_ID:Windows>:dxgi.lib>
 	INCLUDE_PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+
+if(MSVC)
+	# TODO
+	set_target_properties(dssp_native PROPERTIES
+		WINDOWS_EXPORT_ALL_SYMBOLS ON
+	)
+	target_link_options(dssp_native PRIVATE "/FORCE:UNRESOLVED")
+endif()
 
 add_custom_command(TARGET dssp_native POST_BUILD
 	COMMAND "${CMAKE_COMMAND}" -E copy_directory
@@ -54,7 +60,9 @@ add_custom_command(
 			-c++
 			-intgosize 64
 			-module native
-			-package bindings
+			-package native
+			# TODO this flag requires the next version of swig
+			# -no-unique-id
 			-I${CMAKE_CURRENT_SOURCE_DIR}/include
 			-outdir ${APPLICATION_BINDINGS_DIR}
 			-o ${APPLICATION_SWIG_WRAPPER_FILE}

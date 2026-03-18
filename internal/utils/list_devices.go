@@ -19,7 +19,7 @@
 package utils
 
 import (
-	"diffscope-synthesis-platform/native/bindings"
+	"diffscope-synthesis-platform/native"
 	"encoding/json"
 	"os"
 )
@@ -42,22 +42,22 @@ type jsonListDevicesResponse struct {
 	DefaultDevice      jsonDeviceInfo              `json:"default_device"`
 }
 
-func executionProviderTypeToString(providerType bindings.ExecutionProviderType) string {
+func executionProviderTypeToString(providerType native.ExecutionProviderType) string {
 	switch providerType {
-	case bindings.ExecutionProviderType_CPU:
+	case native.ExecutionProviderType_CPU:
 		return "cpu"
-	case bindings.ExecutionProviderType_CUDA:
+	case native.ExecutionProviderType_CUDA:
 		return "cuda"
-	case bindings.ExecutionProviderType_DirectML:
+	case native.ExecutionProviderType_DirectML:
 		return "directml"
-	case bindings.ExecutionProviderType_CoreML:
+	case native.ExecutionProviderType_CoreML:
 		return "coreml"
 	default:
 		panic("Unknown execution provider")
 	}
 }
 
-func toJSONDeviceInfo(device bindings.DeviceInfo) jsonDeviceInfo {
+func toJSONDeviceInfo(device native.DeviceInfo) jsonDeviceInfo {
 	return jsonDeviceInfo{
 		Type:        executionProviderTypeToString(device.Type()),
 		Index:       device.Index(),
@@ -68,8 +68,8 @@ func toJSONDeviceInfo(device bindings.DeviceInfo) jsonDeviceInfo {
 }
 
 func ListDevices(shouldPrintAsJson bool) {
-	executionProviders := bindings.ExecutionProviderInfoGetExecutionProviders()
-	defaultDevice := bindings.ExecutionProviderInfoGetDefaultDevice()
+	executionProviders := native.ExecutionProviderInfoGetExecutionProviders()
+	defaultDevice := native.ExecutionProviderInfoGetDefaultDevice()
 	if shouldPrintAsJson {
 		response := jsonListDevicesResponse{
 			ExecutionProviders: make([]jsonExecutionProviderInfo, 0, executionProviders.Size()),

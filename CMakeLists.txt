@@ -8,7 +8,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(APPLICATION_INSTALL "Install DiffScope Synthesis Platform" ON)
 
 if(MSVC)
-	message(ERROR "MSVC is not supported")
+	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /manifest:no")
+	set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /manifest:no")
+	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /manifest:no")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
 endif()
 
 if(NOT DEFINED APPLICATION_NAME)
@@ -47,6 +50,7 @@ add_custom_command(
 	COMMAND ${CMAKE_COMMAND} -E make_directory ${APPLICATION_OUTPUT_DIR}
 	COMMAND
 		${CMAKE_COMMAND} -E env
+			$<$<PLATFORM_ID:Windows>:CC=gcc>
 			"CGO_ENABLED=1"
 			"CGO_CPPFLAGS=-I${CMAKE_SOURCE_DIR}/native/include"
 			"CGO_CXXFLAGS=-I${CMAKE_SOURCE_DIR}/native/include"

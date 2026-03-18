@@ -106,4 +106,4 @@ ckaec_*.cpp
 go.work
 go.work.sum
 
-native/bindings/
+native/native.go

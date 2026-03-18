@@ -9,6 +9,8 @@
 %include "std_string.i"
 %include "std_vector.i"
 
+#define SWIGEXPORT DSSP_NATIVE_EXPORT
+
 %include "ExecutionProviderInfo.h"
 %include "LanguageService.h"
 
