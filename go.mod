@@ -3,6 +3,8 @@ module diffscope-synthesis-platform
 go 1.26.1
 
 require (
+	github.com/creasty/defaults v1.8.0
+	github.com/gin-contrib/gzip v1.2.5
 	github.com/gin-gonic/gin v1.12.0
 	github.com/jedib0t/go-pretty/v6 v6.7.8
 	github.com/spf13/cobra v1.10.2

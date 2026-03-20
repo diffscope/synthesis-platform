@@ -88,7 +88,7 @@ const LanguageServiceInitializationError *LanguageService::Initialize(ExecutionP
         const auto ortParentPath = onnxDriverPlugin->path().parent_path() / _TSTR("runtimes") / _TSTR("onnx");
         onnxArgs->runtimePath = ep_ == LangPlugins::Api::Onnx::L1::CUDAExecutionProvider ? ortParentPath / _TSTR("cuda") : ortParentPath / _TSTR("default");
 
-        onnxArgs->loadFromProgress = false;
+        onnxArgs->loadFromProcess = false;
         onnxArgs->deviceIndex = deviceIndex;
 
         if (const auto exp = onnxDriver->initialize(onnxArgs); !exp) {
@@ -141,7 +141,7 @@ void LanguageService::ConvertInPlace(const std::vector<LanguageServiceConvertedN
     std::vector<std::unique_ptr<LangCore::G2pInput>> input_;
     input_.reserve(input.size());
     std::ranges::transform(input, std::back_inserter(input_), [](LanguageServiceConvertedNote *x) {
-        return std::make_unique<LangCore::G2pInput>(x->Lyric(), x->GraphemeType());
+        return std::make_unique<LangCore::G2pInput>(x->Lyric(), x->PronunciationType());
     });
     std::vector<LangCore::G2pInput *> ptrInput;
     ptrInput.reserve(input_.size());
@@ -152,7 +152,7 @@ void LanguageService::ConvertInPlace(const std::vector<LanguageServiceConvertedN
     assert(output.size() == input.size());
     for (size_t i = 0; i < output.size(); i++) {
         input[i]->m_lyric = std::move(output[i].lyric);
-        input[i]->m_graphemeType = std::move(output[i].g2pId);
+        input[i]->m_pronunciationType = std::move(output[i].g2pId);
         input[i]->m_pronunciation = std::move(output[i].pronunciation);
         input[i]->m_candidatePronunciations = std::move(output[i].candidates);
         input[i]->m_error = output[i].error;

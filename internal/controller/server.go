@@ -22,6 +22,7 @@ import (
 	"diffscope-synthesis-platform/native"
 	"fmt"
 
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 )
@@ -33,7 +34,7 @@ func StartLanguageService() error {
 	}
 	deviceIndex := viper.GetInt("execution_provider.device_index")
 	if nativeErr := native.LanguageServiceInitialize(ep, deviceIndex); nativeErr.Swigcptr() != 0 {
-	    defer native.DeleteLanguageServiceInitializationError(nativeErr)
+		defer native.DeleteLanguageServiceInitializationError(nativeErr)
 		return fmt.Errorf("failed to initialize native language service: %s", nativeErr.Error())
 	}
 	return nil
@@ -41,6 +42,8 @@ func StartLanguageService() error {
 
 func StartRouter() error {
 	router := gin.Default()
+	router.Use(gzip.Gzip(gzip.DefaultCompression))
+
 	router.GET("/api/info", getApplicationInfo)
 	router.POST("/api/language", postLanguage)
 

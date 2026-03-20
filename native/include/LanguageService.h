@@ -64,16 +64,16 @@ struct LanguageServiceConvertedNote {
 	void SetLyric(std::string lyric) {
 		m_lyric = std::move(lyric);
 	}
-	std::string GraphemeType() const {
-		return m_graphemeType;
+	std::string PronunciationType() const {
+		return m_pronunciationType;
 	}
-	void SetGraphemeType(std::string graphemeType) {
-		m_graphemeType = std::move(graphemeType);
+	void SetPronunciationType(std::string pronunciationType) {
+		m_pronunciationType = std::move(pronunciationType);
 	}
 	std::string Pronunciation() const {
 		return m_pronunciation;
 	}
-	std::vector<std::string> CandidatePronunciations() const {
+	const std::vector<std::string> &CandidatePronunciations() const {
 		return m_candidatePronunciations;
 	}
 	bool IsError() const {
@@ -82,7 +82,7 @@ struct LanguageServiceConvertedNote {
 private:
 	friend class LanguageService;
 	std::string m_lyric;
-	std::string m_graphemeType;
+	std::string m_pronunciationType;
 	std::string m_pronunciation;
 	std::vector<std::string> m_candidatePronunciations;
 	bool m_error;

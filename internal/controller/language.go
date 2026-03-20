@@ -21,27 +21,42 @@ package controller
 import (
 	"diffscope-synthesis-platform/internal/service"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 )
 
 type languageRequestNote struct {
-	Lyric string `json:"lyric"`
+	// Required for SPLIT, TAG, and CONVERT tasks
+	Lyric *string `json:"lyric"`
+
+	// Required and non-empty for CONVERT task
+	Language *string `json:"language"`
 }
 
 type languageRequestConfig struct {
-	Stream               *bool    `json:"stream"`
-	PreferredLanguages   []string `json:"preferred_languages"`
+	// Optional. If set to true, the server will send intermediate results after each task as NDJSON stream.
+	Stream bool `json:"stream" default:"true"`
+
+	// Optional. Map of language to pronunciation type.
+	PronunciationTypeMap map[string]string `json:"pronunciation_type_map"`
+
+	// Optional. List of preferred languages for language tagging and pronunciation conversion. Higher priority languages should be placed earlier in the list.
+	PreferredLanguages []string `json:"preferred_languages"`
+
+	// Optional. // TODO
 	GraphemeTypePriority []string `json:"grapheme_type_priority"`
 }
 
 type languageRequest struct {
-	Notes  *[]languageRequestNote `json:"notes"`
-	Task   *[]string              `json:"task"`
-	Config *languageRequestConfig `json:"config"`
+	Notes  []languageRequestNote `json:"notes" binding:"required"`
+	Task   []languageTaskName    `json:"task" binding:"required"`
+	Config languageRequestConfig `json:"config"`
 }
 
 type languageResponseNote struct {
@@ -61,125 +76,106 @@ type languageResponse struct {
 	Task      []languageTaskName     `json:"task"`
 }
 
-type languageTaskDef struct {
-	Name languageTaskName
-	Type service.TaskType
-}
+func parseLanguageRequest(c *gin.Context) *languageRequest {
+	var req languageRequest
+	defaults.Set(&req)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return nil
+	}
 
-var orderedLanguageTaskDefs = []languageTaskDef{
-	{Name: languageTaskSplit, Type: service.TaskTypeSplit},
-	{Name: languageTaskTag, Type: service.TaskTypeTag},
-	{Name: languageTaskConvert, Type: service.TaskTypeConvert},
+	normalizedTasks, err := normalizeLanguageTasks(req.Task)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return nil
+	}
+
+	for _, note := range req.Notes {
+		if len(normalizedTasks) > 0 && note.Lyric == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "notes[].lyric is required for SPLIT, TAG, or CONVERT tasks"})
+			return nil
+		}
+		if isConvertOnlyTaskSet(normalizedTasks) && note.Language == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "notes[].language is required when task contains only CONVERT"})
+			return nil
+		}
+	}
+	return &req
 }
 
 func postLanguage(c *gin.Context) {
-	var req languageRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
-		return
-	}
-	if req.Notes == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "notes is required"})
-		return
-	}
-	if req.Task == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "task is required"})
-		return
-	}
-
-	notes := *req.Notes
-	rawTasks := *req.Task
-
-	streamEnabled := false
-	preferredLanguages := []string{}
-	graphemeTypePriority := []string{}
-	if req.Config != nil {
-		if req.Config.Stream != nil {
-			streamEnabled = *req.Config.Stream
-		}
-		preferredLanguages = append(preferredLanguages, req.Config.PreferredLanguages...)
-		graphemeTypePriority = append(graphemeTypePriority, req.Config.GraphemeTypePriority...)
-	}
-
-	taskNames, taskTypes, err := normalizeLanguageTasks(rawTasks)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	req := parseLanguageRequest(c)
+	if req == nil {
 		return
 	}
 
 	jobData := service.LanguageData{
-		Notes:                make([]service.LanguageDataNote, len(notes)),
-		PreferredLanguages:   preferredLanguages,
-		GraphemeTypePriority: graphemeTypePriority,
+		Notes:                make([]service.LanguageDataNote, len(req.Notes)),
+		PronunciationTypeMap: req.Config.PronunciationTypeMap,
+		PreferredLanguages:   req.Config.PreferredLanguages,
+		GraphemeTypePriority: req.Config.GraphemeTypePriority,
 	}
-	for i, note := range notes {
-		jobData.Notes[i] = service.LanguageDataNote{Lyric: note.Lyric}
+	for i, note := range req.Notes {
+		jobData.Notes[i] = service.LanguageDataNote{
+			Lyric:    optionalStringValue(note.Lyric),
+			Language: optionalStringValue(note.Language),
+		}
 	}
 
-	if len(taskTypes) == 0 {
+	if len(req.Task) == 0 {
 		resp := languageResponse{
 			Status:    languageStatusFinished,
 			Timestamp: utcTimestamp(),
 			Task:      []languageTaskName{},
 		}
-		if streamEnabled {
+		if req.Config.Stream {
 			setupStreamResponse(c)
-			_ = writeNDJSON(c, resp)
+			writeNDJSON(c, resp)
 			return
 		}
 		c.JSON(http.StatusOK, resp)
 		return
 	}
 
-	if streamEnabled {
+	taskTypes := make([]service.TaskType, len(req.Task))
+	for i, taskName := range req.Task {
+		taskTypes[i] = taskNameToType(taskName)
+	}
+	sort.Slice(taskTypes, func(i, j int) bool {
+		return taskTypes[i] < taskTypes[j]
+	})
+
+	if req.Config.Stream {
 		handleLanguageStream(c, jobData, taskTypes)
 		return
 	}
 
-	handleLanguageNonStream(c, jobData, taskNames, taskTypes)
+	handleLanguageNonStream(c, jobData, taskTypes)
 }
 
-func normalizeLanguageTasks(rawTasks []string) ([]languageTaskName, []service.TaskType, error) {
-	selected := make(map[languageTaskName]bool, len(orderedLanguageTaskDefs))
+func normalizeLanguageTasks(rawTasks []languageTaskName) ([]languageTaskName, error) {
+	selected := make(map[languageTaskName]bool, 3)
 	for _, rawTask := range rawTasks {
-		taskName, ok := parseLanguageTaskName(rawTask)
-		if !ok {
-			normalized := strings.ToUpper(strings.TrimSpace(rawTask))
-			if normalized == "" {
-				continue
-			}
-			return nil, nil, errBadLanguageTask(normalized)
-		}
-		if taskName == "" {
-			continue
-		}
-		selected[taskName] = true
+		selected[rawTask] = true
+	}
+	if selected[languageTaskSplit] && selected[languageTaskConvert] && !selected[languageTaskTag] {
+		return nil, errBadLanguageTaskCombination("SPLIT + CONVERT requires TAG")
 	}
 
-	if selected[languageTaskConvert] && !selected[languageTaskTag] {
-		return nil, nil, errBadLanguageTaskCombination("CONVERT requires TAG")
+	taskNames := make([]languageTaskName, 0, len(selected))
+	for taskName := range selected {
+		taskNames = append(taskNames, taskName)
 	}
-
-	orderedTaskNames := make([]languageTaskName, 0, len(selected))
-	orderedTaskTypes := make([]service.TaskType, 0, len(selected))
-	for _, taskDef := range orderedLanguageTaskDefs {
-		if selected[taskDef.Name] {
-			orderedTaskNames = append(orderedTaskNames, taskDef.Name)
-			orderedTaskTypes = append(orderedTaskTypes, taskDef.Type)
-		}
-	}
-	return orderedTaskNames, orderedTaskTypes, nil
+	return taskNames, nil
 }
 
 func handleLanguageStream(c *gin.Context, data service.LanguageData, taskTypes []service.TaskType) {
 	setupStreamResponse(c)
-	if !writeNDJSON(c, languageResponse{
+	writeNDJSON(c, languageResponse{
 		Status:    languageStatusPartial,
 		Timestamp: utcTimestamp(),
 		Task:      []languageTaskName{},
-	}) {
-		return
-	}
+	})
 
 	taskEvents := make(chan languageTaskEvent, len(taskTypes))
 
@@ -224,14 +220,12 @@ func handleLanguageStream(c *gin.Context, data service.LanguageData, taskTypes [
 				Notes:     buildTaskResponseNotes(event.Data, event.TaskName),
 				Task:      []languageTaskName{event.TaskName},
 			}
-			if !writeNDJSON(c, resp) {
-				return
-			}
+			writeNDJSON(c, resp)
 		}
 	}
 }
 
-func handleLanguageNonStream(c *gin.Context, data service.LanguageData, taskNames []languageTaskName, taskTypes []service.TaskType) {
+func handleLanguageNonStream(c *gin.Context, data service.LanguageData, taskTypes []service.TaskType) {
 	resultCh := make(chan service.LanguageData, 1)
 	finalTask := taskTypes[len(taskTypes)-1]
 
@@ -261,9 +255,12 @@ func handleLanguageNonStream(c *gin.Context, data service.LanguageData, taskName
 	case <-c.Request.Context().Done():
 		return
 	case finalData := <-resultCh:
-		selected := make(map[languageTaskName]bool, len(taskNames))
-		for _, taskName := range taskNames {
+		selected := make(map[languageTaskName]bool, 3)
+		taskNames := make([]languageTaskName, len(taskTypes))
+		for i, taskType := range taskTypes {
+			taskName := taskNameFromType(taskType)
 			selected[taskName] = true
+			taskNames[i] = taskName
 		}
 		resp := languageResponse{
 			Status:    languageStatusFinished,
@@ -282,27 +279,43 @@ func setupStreamResponse(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-func writeNDJSON(c *gin.Context, resp languageResponse) bool {
+func writeNDJSON(c *gin.Context, resp languageResponse) {
 	encoded, err := json.Marshal(resp)
 	if err != nil {
-		return false
+		panic(err.Error())
 	}
 	if _, err := c.Writer.Write(append(encoded, '\n')); err != nil {
-		return false
+		return
 	}
 	if flusher, ok := c.Writer.(http.Flusher); ok {
 		flusher.Flush()
 	}
-	return true
 }
 
 func taskNameFromType(task service.TaskType) languageTaskName {
-	for _, taskDef := range orderedLanguageTaskDefs {
-		if taskDef.Type == task {
-			return taskDef.Name
-		}
+	switch task {
+	case service.TaskTypeSplit:
+		return languageTaskSplit
+	case service.TaskTypeTag:
+		return languageTaskTag
+	case service.TaskTypeConvert:
+		return languageTaskConvert
+	default:
+		panic(fmt.Sprintf("unknown task type: %d", task))
 	}
-	return ""
+}
+
+func taskNameToType(name languageTaskName) service.TaskType {
+	switch name {
+	case languageTaskSplit:
+		return service.TaskTypeSplit
+	case languageTaskTag:
+		return service.TaskTypeTag
+	case languageTaskConvert:
+		return service.TaskTypeConvert
+	default:
+		panic(fmt.Sprintf("unknown task name: %s", name))
+	}
 }
 
 func buildTaskResponseNotes(data service.LanguageData, taskName languageTaskName) []languageResponseNote {
@@ -363,8 +376,12 @@ func buildMergedResponseNotes(data service.LanguageData, selectedTasks map[langu
 func cloneLanguageData(data service.LanguageData) service.LanguageData {
 	copied := service.LanguageData{
 		Notes:                make([]service.LanguageDataNote, len(data.Notes)),
+		PronunciationTypeMap: make(map[string]string, len(data.PronunciationTypeMap)),
 		PreferredLanguages:   append([]string(nil), data.PreferredLanguages...),
 		GraphemeTypePriority: append([]string(nil), data.GraphemeTypePriority...),
+	}
+	for language, pronunciationType := range data.PronunciationTypeMap {
+		copied.PronunciationTypeMap[language] = pronunciationType
 	}
 	for i, note := range data.Notes {
 		copied.Notes[i] = note
@@ -412,14 +429,21 @@ func parseLanguageTaskName(raw string) (languageTaskName, bool) {
 	return taskName, ok
 }
 
+func isConvertOnlyTaskSet(taskNames []languageTaskName) bool {
+	return len(taskNames) == 1 && taskNames[0] == languageTaskConvert
+}
+
+func optionalStringValue(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
 type languageTaskError string
 
 func (e languageTaskError) Error() string {
 	return string(e)
-}
-
-func errBadLanguageTask(taskName string) error {
-	return languageTaskError("unsupported task: " + taskName)
 }
 
 func errBadLanguageTaskCombination(reason string) error {

@@ -42,6 +42,7 @@ type LanguageDataNote struct {
 
 type LanguageData struct {
 	Notes                []LanguageDataNote
+	PronunciationTypeMap map[string]string
 	PreferredLanguages   []string
 	GraphemeTypePriority []string
 }
@@ -82,6 +83,7 @@ func (c *LanguageJobContext) execute() {
 		defer native.DeleteLanguageServiceTaggedNoteVector(input)
 		for i, note := range c.Data.Notes {
 			taggedNote := native.NewLanguageServiceTaggedNote()
+			defer native.DeleteLanguageServiceTaggedNote(taggedNote)
 			taggedNote.SetLyric(note.Lyric)
 			input.Set(i, taggedNote)
 		}
@@ -107,8 +109,13 @@ func (c *LanguageJobContext) execute() {
 		defer native.DeleteLanguageServiceConvertedNoteVector(input)
 		for i, note := range c.Data.Notes {
 			convertedNote := native.NewLanguageServiceConvertedNote()
+			defer native.DeleteLanguageServiceConvertedNote(convertedNote)
 			convertedNote.SetLyric(note.Lyric)
-			convertedNote.SetGraphemeType(note.GraphemeType)
+			if pronunciationType, ok := c.Data.PronunciationTypeMap[note.Language]; ok {
+				convertedNote.SetPronunciationType(pronunciationType)
+			} else {
+				convertedNote.SetPronunciationType(note.Language)
+			}
 			input.Set(i, convertedNote)
 		}
 		native.LanguageServiceConvertInPlace(input)
