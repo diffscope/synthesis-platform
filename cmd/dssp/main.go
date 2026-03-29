@@ -25,9 +25,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"diffscope-synthesis-platform/internal/appinfo"
-	"diffscope-synthesis-platform/internal/controller"
-	"diffscope-synthesis-platform/internal/utils"
+	"diffscope-synthesis-platform/lib/appinfo"
+	"diffscope-synthesis-platform/lib/server"
+	"diffscope-synthesis-platform/lib/utils"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -59,15 +59,9 @@ func newRootCmd() (*cobra.Command, error) {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			versionOnly, err := cmd.Flags().GetBool("version")
 			if err != nil {
 				return err
 			}
-			if versionOnly {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s %s\n", appinfo.ApplicationName, appinfo.ApplicationSemver)
-				return nil
-			}
-
 			return cmd.Help()
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -103,11 +97,20 @@ func newRootCmd() (*cobra.Command, error) {
 		return nil, err
 	}
 
+	listDeviceCmd, err := newListDevicesCmd()
+	if err != nil {
+		return nil, err
+	}
+
+	pmCmd, err := newPMCmd()
+	if err != nil {
+		return nil, err
+	}
+
 	rootCmd.AddCommand(
 		serveCmd,
-		newPullCmd(),
-		newInstallCmd(),
-		newListDevicesCmd(),
+		listDeviceCmd,
+		pmCmd,
 	)
 
 	return rootCmd, nil
@@ -148,7 +151,7 @@ func newServeCmd() (*cobra.Command, error) {
 		Use:   "serve",
 		Short: "Start DSSP service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return controller.StartServer()
+			return server.StartServer()
 		},
 	}
 
@@ -165,35 +168,7 @@ func newServeCmd() (*cobra.Command, error) {
 	return serveCmd, nil
 }
 
-func newPullCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "pull <url>",
-		Short: "Pull package from URL",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			url := args[0]
-			// TODO: Pull package metadata/content from the given URL.
-			fmt.Fprintf(cmd.OutOrStdout(), "TODO pull url=%s packageDir=%s cacheDir=%s verbose=%t\n", url, viper.GetString("package_dir"), viper.GetString("cache_dir"), viper.GetBool("verbose"))
-			return nil
-		},
-	}
-}
-
-func newInstallCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "install <path>",
-		Short: "Install package from local path",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			path := args[0]
-			// TODO: Install package from local path into package directory.
-			fmt.Fprintf(cmd.OutOrStdout(), "TODO install path=%s packageDir=%s verbose=%t\n", path, viper.GetString("package_dir"), viper.GetBool("verbose"))
-			return nil
-		},
-	}
-}
-
-func newListDevicesCmd() *cobra.Command {
+func newListDevicesCmd() (*cobra.Command, error) {
 	listDevicesCmd := &cobra.Command{
 		Use:   "list-devices",
 		Short: "List available execution devices",
@@ -203,12 +178,12 @@ func newListDevicesCmd() *cobra.Command {
 				return err
 			}
 
-			utils.ListDevices(shouldPrintAsJSON)
+			utils.PrintDevices(shouldPrintAsJSON)
 			return nil
 		},
 	}
 
 	listDevicesCmd.Flags().Bool("json", false, "Output device list as JSON")
 
-	return listDevicesCmd
+	return listDevicesCmd, nil
 }

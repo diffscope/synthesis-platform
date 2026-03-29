@@ -74,7 +74,7 @@ func formatMemorySize(memory uint64) string {
 	}
 }
 
-func ListDevices(shouldPrintAsJson bool) {
+func PrintDevices(shouldPrintAsJson bool) {
 	executionProviders := native.ExecutionProviderInfoGetExecutionProviders()
 	defaultDevice := native.ExecutionProviderInfoGetDefaultDevice()
 	if shouldPrintAsJson {

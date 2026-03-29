@@ -16,53 +16,68 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>. *
  **************************************************************************/
 
-package controller
+package package_manager
 
 import (
-	"diffscope-synthesis-platform/native"
-	"fmt"
+	"diffscope-synthesis-platform/lib/package_manager/model"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 
-	"github.com/gin-contrib/gzip"
-	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-func StartLanguageService() error {
-	ep, err := native.ExecutionProviderTypeFromString(viper.GetString("execution_provider.type"))
+var db *gorm.DB
+
+func InitializePackageManager() error {
+	packageDir := strings.TrimSpace(viper.GetString("package_dir"))
+	if packageDir == "" {
+		return errors.New("package_dir is empty")
+	}
+
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		return err
+	}
+
+	dbPath := filepath.Join(packageDir, "package.db")
+	// TODO: customize logger
+	db_, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+		Logger: logger.Discard,
+	})
 	if err != nil {
 		return err
 	}
-	deviceIndex := viper.GetInt("execution_provider.device_index")
-	if nativeErr := native.LanguageServiceInitialize(ep, deviceIndex); nativeErr.Swigcptr() != 0 {
-		defer native.DeleteLanguageServiceInitializationError(nativeErr)
-		return fmt.Errorf("failed to initialize native language service: %s", nativeErr.Error())
+
+	db = db_
+	if err := db.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+		return err
 	}
+
+	if err := db.AutoMigrate(
+		&model.Registry{},
+		&model.Package{},
+		&model.PackageText{},
+		&model.Dependency{},
+		&model.Singer{},
+		&model.SingerText{},
+		&model.Voice{},
+		&model.VoiceText{},
+		&model.Installation{},
+		&model.InstallationDependency{},
+	); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func StartRouter() error {
-	router := gin.Default()
-	router.Use(gzip.Gzip(gzip.DefaultCompression))
-
-	router.GET("/api/info", getApplicationInfo)
-	router.POST("/api/language", postLanguage)
-
-	host := viper.GetString("host")
-	port := viper.GetInt("port")
-
-	return router.Run(fmt.Sprintf("%s:%d", host, port))
-}
-
-func StartServer() error {
-	defaultDevice := native.ExecutionProviderInfoGetDefaultDevice()
-	viper.SetDefault("execution_provider.type", defaultDevice.Type().String())
-	viper.SetDefault("execution_provider.device_index", defaultDevice.Index())
-
-	if err := StartLanguageService(); err != nil {
-		return err
+func DB() *gorm.DB {
+	if db == nil {
+		panic("package manager database is not initialized")
 	}
-	if err := StartRouter(); err != nil {
-		return err
-	}
-	return nil
+	return db
 }

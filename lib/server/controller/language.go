@@ -19,7 +19,7 @@
 package controller
 
 import (
-	"diffscope-synthesis-platform/internal/service"
+	"diffscope-synthesis-platform/lib/server/service"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -103,7 +103,7 @@ func parseLanguageRequest(c *gin.Context) *languageRequest {
 	return &req
 }
 
-func postLanguage(c *gin.Context) {
+func PostLanguage(c *gin.Context) {
 	req := parseLanguageRequest(c)
 	if req == nil {
 		return

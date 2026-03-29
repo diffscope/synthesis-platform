@@ -16,17 +16,15 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>. *
  **************************************************************************/
 
-package controller
+package model
 
-import (
-	"net/http"
-	"diffscope-synthesis-platform/internal/service"
-	"github.com/gin-gonic/gin"
-)
+type Dependency struct {
+	PackageID         string `gorm:"column:package_id;type:text;not null"`
+	PackageVersion    string `gorm:"column:package_version;type:text;not null"`
+	PackageRegistryID string `gorm:"column:package_registry_id;type:text;not null"`
 
-func getApplicationInfo(c *gin.Context) {
-	info := service.GetApplicationInfo()
-	c.JSON(http.StatusOK, gin.H{
-		"dssp": info,
-	})
+	ID      string `gorm:"column:id;type:text;not null"`
+	Version string `gorm:"column:version;type:text;not null"`
+
+	Package Package `gorm:"foreignKey:PackageID,PackageVersion,PackageRegistryID;references:ID,Version,RegistryID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }

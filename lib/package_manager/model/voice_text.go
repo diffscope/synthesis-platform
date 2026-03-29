@@ -16,16 +16,18 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>. *
  **************************************************************************/
 
-package service
+package model
 
-import "diffscope-synthesis-platform/internal/appinfo"
+type VoiceText struct {
+	VoiceSingerPackageID         string `gorm:"column:voice_singer_package_id;type:text;primaryKey"`
+	VoiceSingerPackageVersion    string `gorm:"column:voice_singer_package_version;type:text;primaryKey"`
+	VoiceSingerPackageRegistryID string `gorm:"column:voice_singer_package_registry_id;type:text;primaryKey"`
+	VoiceSingerID                string `gorm:"column:voice_singer_id;type:text;primaryKey"`
+	VoiceID                      string `gorm:"column:voice_id;type:text;primaryKey"`
+	Language                     string `gorm:"column:language;type:text;primaryKey"`
 
-type ApplicationInfo struct {
-	Version string `json:"version"`
-}
+	Name         string `gorm:"column:name;type:text"`
+	DemoAudioURL string `gorm:"column:demo_audio_url;type:text"`
 
-func GetApplicationInfo() ApplicationInfo {
-	return ApplicationInfo{
-		Version: appinfo.ApplicationSemver,
-	}
+	Voice Voice `gorm:"foreignKey:VoiceSingerPackageID,VoiceSingerPackageVersion,VoiceSingerPackageRegistryID,VoiceSingerID,VoiceID;references:SingerPackageID,SingerPackageVersion,SingerPackageRegistryID,SingerID,ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }

@@ -56,7 +56,7 @@ add_custom_command(
 			"CGO_CXXFLAGS=-I${CMAKE_SOURCE_DIR}/native/include"
 			"CGO_LDFLAGS=-L$<TARGET_FILE_DIR:dssp_native> -ldssp_native"
 			"${GO_EXECUTABLE}" build
-				-ldflags "-X 'diffscope-synthesis-platform/internal/appinfo.ApplicationName=${APPLICATION_NAME}' -X 'diffscope-synthesis-platform/internal/appinfo.ApplicationSemver=${APPLICATION_SEMVER}'"
+				-ldflags "-X 'diffscope-synthesis-platform/lib/appinfo.ApplicationName=${APPLICATION_NAME}' -X 'diffscope-synthesis-platform/lib/appinfo.ApplicationSemver=${APPLICATION_SEMVER}'"
 				-o ${APPLICATION_EXECUTABLE}
 				./cmd/dssp
 	COMMAND ${CMAKE_COMMAND} -E touch ${APPLICATION_GO_STAMP}
