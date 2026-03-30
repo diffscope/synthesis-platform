@@ -33,8 +33,22 @@ import (
 
 var db *gorm.DB
 
+type Config struct {
+	PackageDir       string
+	ShouldOutputJSON bool
+	NoCache          bool
+	NoTTY            bool
+}
+
+var config Config
+
 func InitializePackageManager() error {
-	packageDir := strings.TrimSpace(viper.GetString("package_dir"))
+	config.PackageDir = strings.TrimSpace(viper.GetString("package_dir"))
+	config.ShouldOutputJSON = viper.GetBool("package_manager.json_output")
+	config.NoCache = viper.GetBool("package_manager.no_cache")
+	config.NoTTY = viper.GetBool("package_manager.no_tty")
+
+	packageDir := config.PackageDir
 	if packageDir == "" {
 		return errors.New("package_dir is empty")
 	}
@@ -80,4 +94,8 @@ func DB() *gorm.DB {
 		panic("package manager database is not initialized")
 	}
 	return db
+}
+
+func GetConfig() Config {
+	return config
 }

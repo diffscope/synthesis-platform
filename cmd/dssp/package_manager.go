@@ -40,7 +40,15 @@ func newPMCmd() (*cobra.Command, error) {
 
 	flags := pmCmd.PersistentFlags()
 	flags.Bool("json", false, "Output as JSON or NDJSON for machine readability")
+	flags.Bool("no-cache", false, "Disable cache and always fetch from network")
+	flags.Bool("no-tty", false, "Assume stdout is not a TTY")
 	if err := viper.BindPFlag("package_manager.json_output", flags.Lookup("json")); err != nil {
+		return nil, err
+	}
+	if err := viper.BindPFlag("package_manager.no_cache", flags.Lookup("no-cache")); err != nil {
+		return nil, err
+	}
+	if err := viper.BindPFlag("package_manager.no_tty", flags.Lookup("no-tty")); err != nil {
 		return nil, err
 	}
 
@@ -141,11 +149,7 @@ func newPMCmd() (*cobra.Command, error) {
 			if err != nil {
 				return err
 			}
-			printPMCommandOutput(cmd, args, []string{
-				fmt.Sprintf("registry: %v", registries),
-			})
-			// TODO: implement pm registry update
-			return nil
+			return command.Update(registries)
 		},
 	}
 	updateCmd.Flags().StringSliceP("registry", "r", nil, "Registry IDs")
