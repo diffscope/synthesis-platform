@@ -16,45 +16,50 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>. *
  **************************************************************************/
 
-package repository
+package utils
 
 import (
-	"diffscope-synthesis-platform/lib/package_manager/model"
-
-	"gorm.io/gorm"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
 )
 
-func GetAllRegistries(tx *gorm.DB) ([]model.Registry, error) {
-	registries := make([]model.Registry, 0)
-	if err := tx.Order("id ASC").Find(&registries).Error; err != nil {
-		return nil, err
+type PackageVersion struct {
+	Major int
+	Minor int
+	Patch int
+	Tweak int
+}
+
+func (v PackageVersion) String() string {
+	return fmt.Sprintf("%d.%d.%d.%d", v.Major, v.Minor, v.Patch, v.Tweak)
+}
+
+func ParsePackageVersion(versionStr string) (*PackageVersion, error) {
+	pattern := `^\d{1,4}(?:\.\d{1,4}){0,3}$`
+	matched, err := regexp.MatchString(pattern, versionStr)
+	if err != nil {
+		return nil, fmt.Errorf("validate version format: %w", err)
+	}
+	if !matched {
+		return nil, fmt.Errorf("invalid version format: %s", versionStr)
 	}
 
-	return registries, nil
-}
-
-func GetRegistryByID(tx *gorm.DB, id string) (*model.Registry, error) {
-	var registry model.Registry
-	if err := tx.Where("id = ?", id).Take(&registry).Error; err != nil {
-		return nil, err
+	parts := strings.Split(versionStr, ".")
+	values := []int{0, 0, 0, 0}
+	for i, part := range parts {
+		value, convErr := strconv.Atoi(part)
+		if convErr != nil {
+			return nil, fmt.Errorf("parse version part %q: %w", part, convErr)
+		}
+		values[i] = value
 	}
 
-	return &registry, nil
-}
-
-func CreateRegistry(tx *gorm.DB, registry *model.Registry) error {
-	return tx.Create(registry).Error
-}
-
-func UpdateRegistry(tx *gorm.DB, registry *model.Registry) error {
-	return tx.Model(&model.Registry{}).
-		Where("id = ?", registry.ID).
-		Updates(map[string]interface{}{
-			"url":        registry.URL,
-			"updated_at": registry.UpdatedAt,
-		}).Error
-}
-
-func DeleteRegistryByID(tx *gorm.DB, id string) error {
-	return tx.Where("id = ?", id).Delete(&model.Registry{}).Error
+	return &PackageVersion{
+		Major: values[0],
+		Minor: values[1],
+		Patch: values[2],
+		Tweak: values[3],
+	}, nil
 }

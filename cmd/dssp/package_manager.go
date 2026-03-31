@@ -52,16 +52,12 @@ func newPMCmd() (*cobra.Command, error) {
 		return nil, err
 	}
 
-	installCmd := &cobra.Command{
-		Use:   "install <package_path>...",
-		Short: "Install local packages",
+	importCmd := &cobra.Command{
+		Use:   "import <package_path>...",
+		Short: "Import local packages",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dryRun, err := cmd.Flags().GetBool("dry-run")
-			if err != nil {
-				return err
-			}
-			registries, err := cmd.Flags().GetStringSlice("registry")
 			if err != nil {
 				return err
 			}
@@ -72,7 +68,31 @@ func newPMCmd() (*cobra.Command, error) {
 
 			printPMCommandOutput(cmd, args, []string{
 				fmt.Sprintf("dry-run: %t", dryRun),
-				fmt.Sprintf("registry: %v", registries),
+				fmt.Sprintf("force: %t", force),
+			})
+			// TODO: implement pm import
+			return nil
+		},
+	}
+	importCmd.Flags().Bool("dry-run", false, "Preview import without changes")
+	importCmd.Flags().BoolP("force", "f", false, "Force install")
+
+	installCmd := &cobra.Command{
+		Use:   "install <[registry_id:]package_id[@version]>...",
+		Short: "Install packages from registry",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dryRun, err := cmd.Flags().GetBool("dry-run")
+			if err != nil {
+				return err
+			}
+			force, err := cmd.Flags().GetBool("force")
+			if err != nil {
+				return err
+			}
+
+			printPMCommandOutput(cmd, args, []string{
+				fmt.Sprintf("dry-run: %t", dryRun),
 				fmt.Sprintf("force: %t", force),
 			})
 			// TODO: implement pm install
@@ -80,65 +100,7 @@ func newPMCmd() (*cobra.Command, error) {
 		},
 	}
 	installCmd.Flags().Bool("dry-run", false, "Preview install without changes")
-	installCmd.Flags().BoolP("local-only", "l", false, "Only install from local files without registry lookup")
-	installCmd.Flags().StringSliceP("registry", "r", nil, "Registry IDs")
 	installCmd.Flags().BoolP("force", "f", false, "Force install")
-
-	fetchCmd := &cobra.Command{
-		Use:   "fetch <package_id@version>...",
-		Short: "Fetch packages from registry",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			dryRun, err := cmd.Flags().GetBool("dry-run")
-			if err != nil {
-				return err
-			}
-			registries, err := cmd.Flags().GetStringSlice("registry")
-			if err != nil {
-				return err
-			}
-			force, err := cmd.Flags().GetBool("force")
-			if err != nil {
-				return err
-			}
-
-			printPMCommandOutput(cmd, args, []string{
-				fmt.Sprintf("dry-run: %t", dryRun),
-				fmt.Sprintf("registry: %v", registries),
-				fmt.Sprintf("force: %t", force),
-			})
-			// TODO: implement pm fetch
-			return nil
-		},
-	}
-	fetchCmd.Flags().Bool("dry-run", false, "Preview fetch without changes")
-	fetchCmd.Flags().StringSliceP("registry", "r", nil, "Registry IDs")
-	fetchCmd.Flags().BoolP("force", "f", false, "Force fetch")
-
-	downloadCmd := &cobra.Command{
-		Use:   "download <package_id@version>...",
-		Short: "Download packages from registry",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			dryRun, err := cmd.Flags().GetBool("dry-run")
-			if err != nil {
-				return err
-			}
-			registries, err := cmd.Flags().GetStringSlice("registry")
-			if err != nil {
-				return err
-			}
-
-			printPMCommandOutput(cmd, args, []string{
-				fmt.Sprintf("dry-run: %t", dryRun),
-				fmt.Sprintf("registry: %v", registries),
-			})
-			// TODO: implement pm download
-			return nil
-		},
-	}
-	downloadCmd.Flags().Bool("dry-run", false, "Preview download without changes")
-	downloadCmd.Flags().StringSliceP("registry", "r", nil, "Registry IDs")
 
 	updateCmd := &cobra.Command{
 		Use:   "update",
@@ -331,9 +293,8 @@ func newPMCmd() (*cobra.Command, error) {
 	exportCmd.Flags().Bool("dry-run", false, "Preview export without changes")
 
 	pmCmd.AddCommand(
+		importCmd,
 		installCmd,
-		fetchCmd,
-		downloadCmd,
 		updateCmd,
 		rmCmd,
 		registryCmd,
