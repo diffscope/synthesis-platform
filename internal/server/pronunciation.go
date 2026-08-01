@@ -20,7 +20,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 
@@ -34,7 +33,6 @@ var logger = slog.With("component", "server.pronunciation")
 type pronunciationRequest struct {
 	Context *pronunciationContext `json:"context" validate:"required"`
 	Input   *pronunciationInput   `json:"input" validate:"required"`
-	EnvTag  *string               `json:"env_tag"`
 }
 
 type pronunciationContext struct {
@@ -50,17 +48,10 @@ type pronunciationInput struct {
 type pronunciationResponse struct {
 	State  api.State           `json:"state"`
 	Output pronunciationOutput `json:"output"`
-	EnvTag string              `json:"env_tag"`
 }
 
 type pronunciationOutput struct {
 	Notes []api.Pronunciation `json:"notes"`
-}
-
-type errorResponse struct {
-	State   api.State     `json:"state"`
-	Code    api.ErrorCode `json:"code"`
-	Message string        `json:"message"`
 }
 
 func PostPronunciation(c *gin.Context) {
@@ -73,16 +64,11 @@ func PostPronunciation(c *gin.Context) {
 
 	archExtra := *request.Context.ArchExtra
 	singer := request.Context.Singer.ToSinger()
-	arch, ok := getArchitecture(*request.Context.Arch)
+	archName := *request.Context.Arch
+	context := problemContext{Arch: archName, Singer: singer.ID}
+	arch, ok := getArchitecture(archName)
 	if !ok {
-		writeError(c, newUnknownArchError())
-		return
-	}
-	envTag := arch.GetEnvTag(archExtra, []api.Singer{singer})
-	if request.EnvTag != nil && *request.EnvTag == envTag {
-		if c.Request.Context().Err() == nil {
-			c.Status(http.StatusNoContent)
-		}
+		writeProblem(c, newUnknownArchError(archName), context)
 		return
 	}
 
@@ -96,7 +82,7 @@ func PostPronunciation(c *gin.Context) {
 		if c.Request.Context().Err() != nil {
 			return
 		}
-		writeError(c, err)
+		writeProblem(c, err, context)
 		return
 	}
 
@@ -108,7 +94,6 @@ func PostPronunciation(c *gin.Context) {
 		Output: pronunciationOutput{
 			Notes: pronunciations,
 		},
-		EnvTag: envTag,
 	})
 }
 
@@ -118,31 +103,4 @@ func pronunciationLyrics(requests []api.LyricRequest) []api.Lyric {
 		lyrics = append(lyrics, request.ToLyric())
 	}
 	return lyrics
-}
-
-func writeError(c *gin.Context, err error) {
-	if c.Request.Context().Err() != nil {
-		return
-	}
-	apiError := toAPIError(err)
-	if !errors.As(err, &apiError) {
-		logger.Error("Internal error occurred", slog.Any("error", err))
-	}
-	c.JSON(http.StatusUnprocessableEntity, errorResponse{
-		State:   api.StateError,
-		Code:    apiError.Code,
-		Message: apiError.Message,
-	})
-}
-
-func toAPIError(err error) *api.Error {
-	var apiError *api.Error
-	if errors.As(err, &apiError) {
-		return apiError
-	}
-	message := ""
-	if err != nil {
-		message = err.Error()
-	}
-	return api.NewError(api.ErrorCodeInternalError, message)
 }

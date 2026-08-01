@@ -20,7 +20,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 
@@ -32,16 +31,14 @@ import (
 var parameterLogger = slog.With("component", "server.parameter")
 
 type parameterRequest struct {
-	Context *durationContext           `json:"context" validate:"required"`
+	Context *multiSingerContext        `json:"context" validate:"required"`
 	Input   *api.ParameterInputRequest `json:"input" validate:"required"`
-	EnvTag  *string                    `json:"env_tag"`
 	Stream  *bool                      `json:"stream"`
 }
 
 type parameterResponse struct {
 	State  api.State           `json:"state"`
 	Output api.ParameterOutput `json:"output"`
-	EnvTag string              `json:"env_tag"`
 }
 
 type parameterOutputResponse struct {
@@ -62,20 +59,15 @@ func PostParameter(c *gin.Context) {
 	}
 
 	archExtra := *request.Context.ArchExtra
-	arch, ok := getArchitecture(*request.Context.Arch)
+	archName := *request.Context.Arch
+	context := problemContext{Arch: archName, Singers: singerIDs(request.Context.Singers)}
+	arch, ok := getArchitecture(archName)
 	if !ok {
-		writeError(c, newUnknownArchError())
+		writeProblem(c, newUnknownArchError(archName), context)
 		return
 	}
 
-	singers := request.singers()
-	envTag := arch.GetEnvTag(archExtra, singers)
-	if request.EnvTag != nil && *request.EnvTag == envTag {
-		if c.Request.Context().Err() == nil {
-			c.Status(http.StatusNoContent)
-		}
-		return
-	}
+	singers := request.Context.singers()
 
 	input := request.Input.ToParameterInput()
 	events, err := arch.Parameter(
@@ -92,40 +84,32 @@ func PostParameter(c *gin.Context) {
 		if c.Request.Context().Err() != nil {
 			return
 		}
-		writeError(c, err)
+		writeProblem(c, err, context)
 		return
 	}
 	if events == nil {
-		writeError(c, api.NewError(api.ErrorCodeInternalError, "parameter stream is nil"))
+		writeProblem(c, api.NewError(api.ProblemTypeInternalError, "parameter stream is nil"), context)
 		return
 	}
 
 	if request.stream() {
-		writeParameterStream(c, events, envTag)
+		writeParameterStream(c, events, context)
 		return
 	}
-	writeParameterResponse(c, events, envTag)
+	writeParameterResponse(c, events, context)
 }
 
 func (r parameterRequest) stream() bool {
 	return r.Stream != nil && *r.Stream
 }
 
-func (r parameterRequest) singers() []api.Singer {
-	singers := make([]api.Singer, 0, len(r.Context.Singers))
-	for _, singer := range r.Context.Singers {
-		singers = append(singers, singer.ToSinger())
-	}
-	return singers
-}
-
-func writeParameterResponse(c *gin.Context, events <-chan api.ParameterEvent, envTag string) {
+func writeParameterResponse(c *gin.Context, events <-chan api.ParameterEvent, context problemContext) {
 	output, err := readParameterEvents(events)
 	if err != nil {
 		if c.Request.Context().Err() != nil {
 			return
 		}
-		writeError(c, err)
+		writeProblem(c, err, context)
 		return
 	}
 	if c.Request.Context().Err() != nil {
@@ -134,7 +118,6 @@ func writeParameterResponse(c *gin.Context, events <-chan api.ParameterEvent, en
 	c.JSON(http.StatusOK, parameterResponse{
 		State:  api.StateComplete,
 		Output: output,
-		EnvTag: envTag,
 	})
 }
 
@@ -153,7 +136,7 @@ func readParameterEvents(events <-chan api.ParameterEvent) (api.ParameterOutput,
 			if event.Err != nil {
 				return api.ParameterOutput{}, event.Err
 			}
-			return api.ParameterOutput{}, api.NewError(api.ErrorCodeInternalError, "")
+			return api.ParameterOutput{}, api.NewError(api.ProblemTypeInternalError, "")
 		case api.StateQueuing:
 			previous = event.State
 		case api.StateProcessing:
@@ -163,10 +146,10 @@ func readParameterEvents(events <-chan api.ParameterEvent) (api.ParameterOutput,
 			return api.ParameterOutput{}, invalidParameterStateError()
 		}
 	}
-	return api.ParameterOutput{}, api.NewError(api.ErrorCodeInternalError, "parameter stream ended without terminal state")
+	return api.ParameterOutput{}, api.NewError(api.ProblemTypeInternalError, "parameter stream ended without terminal state")
 }
 
-func writeParameterStream(c *gin.Context, events <-chan api.ParameterEvent, envTag string) {
+func writeParameterStream(c *gin.Context, events <-chan api.ParameterEvent, context problemContext) {
 	writer := c.Writer
 	writer.Header().Set("Content-Type", "application/x-ndjson")
 	writer.WriteHeader(http.StatusOK)
@@ -178,7 +161,7 @@ func writeParameterStream(c *gin.Context, events <-chan api.ParameterEvent, envT
 			return
 		}
 		if err := validateParameterTransition(previous, event.State); err != nil {
-			writeParameterStreamError(encoder, writer, err)
+			writeParameterStreamError(encoder, writer, err, context)
 			return
 		}
 		switch event.State {
@@ -203,7 +186,6 @@ func writeParameterStream(c *gin.Context, events <-chan api.ParameterEvent, envT
 			if err := encoder.Encode(parameterResponse{
 				State:  api.StateComplete,
 				Output: ensureParameterOutput(event.Output),
-				EnvTag: envTag,
 			}); err != nil {
 				return
 			}
@@ -212,12 +194,12 @@ func writeParameterStream(c *gin.Context, events <-chan api.ParameterEvent, envT
 		case api.StateError:
 			err := event.Err
 			if err == nil {
-				err = api.NewError(api.ErrorCodeInternalError, "")
+				err = api.NewError(api.ProblemTypeInternalError, "")
 			}
-			writeParameterStreamError(encoder, writer, err)
+			writeParameterStreamError(encoder, writer, err, context)
 			return
 		default:
-			writeParameterStreamError(encoder, writer, invalidParameterStateError())
+			writeParameterStreamError(encoder, writer, invalidParameterStateError(), context)
 			return
 		}
 		flushParameterStream(writer)
@@ -225,20 +207,13 @@ func writeParameterStream(c *gin.Context, events <-chan api.ParameterEvent, envT
 	writeParameterStreamError(
 		encoder,
 		writer,
-		api.NewError(api.ErrorCodeInternalError, "parameter stream ended without terminal state"),
+		api.NewError(api.ProblemTypeInternalError, "parameter stream ended without terminal state"),
+		context,
 	)
 }
 
-func writeParameterStreamError(encoder *json.Encoder, writer gin.ResponseWriter, err error) {
-	apiError := toAPIError(err)
-	if !errors.As(err, &apiError) {
-		parameterLogger.Error("Internal parameter stream error occurred", slog.Any("error", err))
-	}
-	_ = encoder.Encode(errorResponse{
-		State:   api.StateError,
-		Code:    apiError.Code,
-		Message: apiError.Message,
-	})
+func writeParameterStreamError(encoder *json.Encoder, writer gin.ResponseWriter, err error, context problemContext) {
+	_ = encoder.Encode(newStreamProblem(err, context))
 	flushParameterStream(writer)
 }
 
@@ -259,7 +234,7 @@ func validateParameterTransition(previous api.State, current api.State) error {
 }
 
 func invalidParameterStateError() error {
-	return api.NewError(api.ErrorCodeInternalError, "invalid parameter state transition")
+	return api.NewError(api.ProblemTypeInternalError, "invalid parameter state transition")
 }
 
 func emptyParameterOutput() api.ParameterOutput {

@@ -19,8 +19,6 @@
 package server
 
 import (
-	"errors"
-	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -32,7 +30,6 @@ import (
 )
 
 var (
-	architectureLogger       = slog.With("component", "server.architecture")
 	architecturesMu          sync.RWMutex
 	registeredArchitectures  = make(map[string]architecture.Architecture)
 	registeredArchitectureDB = architecture.NewRegistry(registeredArchitectures)
@@ -67,12 +64,12 @@ func GetArchitectureList(c *gin.Context) {
 	for _, name := range registeredArchitectureNames() {
 		arch, ok := getArchitecture(name)
 		if !ok {
-			writeArchitectureError(c, newUnknownArchError())
+			writeArchitectureError(c, newUnknownArchError(name), name)
 			return
 		}
 		metadata, err := arch.GetMetadata(displayLanguage)
 		if err != nil {
-			writeArchitectureError(c, err)
+			writeArchitectureError(c, err, name)
 			return
 		}
 		response = append(response, newArchitectureMetadataResponse(name, metadata))
@@ -84,12 +81,12 @@ func GetArchitecture(c *gin.Context) {
 	name := c.Param("arch_id")
 	arch, ok := getArchitecture(name)
 	if !ok {
-		writeArchitectureError(c, newUnknownArchError())
+		writeArchitectureError(c, newUnknownArchError(name), name)
 		return
 	}
 	metadata, err := arch.GetMetadata(c.Query("display_language"))
 	if err != nil {
-		writeArchitectureError(c, err)
+		writeArchitectureError(c, err, name)
 		return
 	}
 	c.JSON(http.StatusOK, newArchitectureMetadataResponse(name, metadata))
@@ -107,8 +104,8 @@ func registeredArchitectureNames() []string {
 	return registeredArchitectureDB.Names()
 }
 
-func newUnknownArchError() error {
-	return api.NewError(api.ErrorCodeUnknownArch, "supported architectures: "+strings.Join(registeredArchitectureNames(), ", "))
+func newUnknownArchError(arch string) error {
+	return api.NewUnknownArchError(arch, "supported architectures: "+strings.Join(registeredArchitectureNames(), ", "))
 }
 
 func newArchitectureMetadataResponse(id string, metadata api.ArchitectureMetadata) architectureMetadataResponse {
@@ -122,22 +119,6 @@ func newArchitectureMetadataResponse(id string, metadata api.ArchitectureMetadat
 	}
 }
 
-func writeArchitectureError(c *gin.Context, err error) {
-	if c.Request.Context().Err() != nil {
-		return
-	}
-	apiError := toAPIError(err)
-	if !errors.As(err, &apiError) {
-		architectureLogger.Error("Internal error occurred", slog.Any("error", err))
-	}
-	status := http.StatusUnprocessableEntity
-	switch apiError.Code {
-	case api.ErrorCodeUnknownArch:
-		status = http.StatusNotFound
-	}
-	c.JSON(status, errorResponse{
-		State:   api.StateError,
-		Code:    apiError.Code,
-		Message: apiError.Message,
-	})
+func writeArchitectureError(c *gin.Context, err error, arch string) {
+	writeProblem(c, err, problemContext{Arch: arch})
 }

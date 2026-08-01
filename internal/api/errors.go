@@ -18,32 +18,88 @@
 
 package api
 
-type ErrorCode string
+type ProblemType string
 
 const (
-	ErrorCodeInternalError       ErrorCode = "INTERNAL_ERROR"
-	ErrorCodeUnknownArch         ErrorCode = "UNKNOWN_ARCH"
-	ErrorCodeSingerNotExist      ErrorCode = "SINGER_NOT_EXIST"
-	ErrorCodeSingerConfigInvalid ErrorCode = "SINGER_CONFIG_INVALID"
-	ErrorCodeInvalidParameter    ErrorCode = "INVALID_PARAMETER"
-	ErrorCodeSingersUnmixable    ErrorCode = "SINGERS_UNMIXABLE"
+	ProblemTypeInternalError       ProblemType = "/problems/internal_error"
+	ProblemTypeUnknownArch         ProblemType = "/problems/unknown_arch"
+	ProblemTypeSingerNotExist      ProblemType = "/problems/singer_not_exist"
+	ProblemTypeSingerConfigInvalid ProblemType = "/problems/singer_config_invalid"
+	ProblemTypeInvalidParameter    ProblemType = "/problems/invalid_parameter"
+	ProblemTypeSingersUnmixable    ProblemType = "/problems/singers_unmixable"
+	ProblemTypeValidationError     ProblemType = "/problems/validation_error"
 )
 
-type Error struct {
-	Code    ErrorCode
-	Message string
+type ValidationIssue struct {
+	Pointer string `json:"pointer"`
+	Type    string `json:"type"`
+	Detail  string `json:"detail"`
 }
 
-func NewError(code ErrorCode, message string) *Error {
+type ParameterIssue struct {
+	ID        string `json:"id"`
+	ErrorType string `json:"error_type"`
+}
+
+type Error struct {
+	Type      ProblemType
+	Detail    string
+	Arch      string
+	Singer    string
+	Singers   []string
+	Parameter *ParameterIssue
+	Errors    []ValidationIssue
+}
+
+func NewError(problemType ProblemType, detail string) *Error {
 	return &Error{
-		Code:    code,
-		Message: message,
+		Type:   problemType,
+		Detail: detail,
 	}
+}
+
+func NewUnknownArchError(arch string, detail string) *Error {
+	err := NewError(ProblemTypeUnknownArch, detail)
+	err.Arch = arch
+	return err
+}
+
+func NewSingerNotExistError(singer string, detail string) *Error {
+	err := NewError(ProblemTypeSingerNotExist, detail)
+	err.Singer = singer
+	return err
+}
+
+func NewSingerConfigInvalidError(detail string, issues ...ValidationIssue) *Error {
+	err := NewError(ProblemTypeSingerConfigInvalid, detail)
+	err.Errors = append([]ValidationIssue(nil), issues...)
+	return err
+}
+
+func NewInvalidParameterError(parameterID string, errorType string, detail string) *Error {
+	err := NewError(ProblemTypeInvalidParameter, detail)
+	err.Parameter = &ParameterIssue{
+		ID:        parameterID,
+		ErrorType: errorType,
+	}
+	return err
+}
+
+func NewSingersUnmixableError(firstSinger string, secondSinger string, detail string) *Error {
+	err := NewError(ProblemTypeSingersUnmixable, detail)
+	err.Singers = []string{firstSinger, secondSinger}
+	return err
+}
+
+func NewValidationError(detail string, issues ...ValidationIssue) *Error {
+	err := NewError(ProblemTypeValidationError, detail)
+	err.Errors = append([]ValidationIssue(nil), issues...)
+	return err
 }
 
 func (e *Error) Error() string {
-	if e.Message != "" {
-		return e.Message
+	if e.Detail != "" {
+		return e.Detail
 	}
-	return string(e.Code)
+	return string(e.Type)
 }

@@ -20,7 +20,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 
@@ -32,16 +31,14 @@ import (
 var audioLogger = slog.With("component", "server.audio")
 
 type audioRequest struct {
-	Context *durationContext       `json:"context" validate:"required"`
+	Context *multiSingerContext    `json:"context" validate:"required"`
 	Input   *api.AudioInputRequest `json:"input" validate:"required"`
-	EnvTag  *string                `json:"env_tag"`
 	Stream  *bool                  `json:"stream"`
 }
 
 type audioResponse struct {
 	State  api.State       `json:"state"`
 	Output api.AudioOutput `json:"output"`
-	EnvTag string          `json:"env_tag"`
 }
 
 type audioStateResponse struct {
@@ -57,20 +54,15 @@ func PostAudio(c *gin.Context) {
 	}
 
 	archExtra := *request.Context.ArchExtra
-	arch, ok := getArchitecture(*request.Context.Arch)
+	archName := *request.Context.Arch
+	context := problemContext{Arch: archName, Singers: singerIDs(request.Context.Singers)}
+	arch, ok := getArchitecture(archName)
 	if !ok {
-		writeError(c, newUnknownArchError())
+		writeProblem(c, newUnknownArchError(archName), context)
 		return
 	}
 
-	singers := request.singers()
-	envTag := arch.GetEnvTag(archExtra, singers)
-	if request.EnvTag != nil && *request.EnvTag == envTag {
-		if c.Request.Context().Err() == nil {
-			c.Status(http.StatusNoContent)
-		}
-		return
-	}
+	singers := request.Context.singers()
 
 	input := request.Input.ToAudioInput()
 	events, err := arch.Audio(
@@ -87,40 +79,32 @@ func PostAudio(c *gin.Context) {
 		if c.Request.Context().Err() != nil {
 			return
 		}
-		writeError(c, err)
+		writeProblem(c, err, context)
 		return
 	}
 	if events == nil {
-		writeError(c, api.NewError(api.ErrorCodeInternalError, "audio stream is nil"))
+		writeProblem(c, api.NewError(api.ProblemTypeInternalError, "audio stream is nil"), context)
 		return
 	}
 
 	if request.stream() {
-		writeAudioStream(c, events, envTag)
+		writeAudioStream(c, events, context)
 		return
 	}
-	writeAudioResponse(c, events, envTag)
+	writeAudioResponse(c, events, context)
 }
 
 func (r audioRequest) stream() bool {
 	return r.Stream != nil && *r.Stream
 }
 
-func (r audioRequest) singers() []api.Singer {
-	singers := make([]api.Singer, 0, len(r.Context.Singers))
-	for _, singer := range r.Context.Singers {
-		singers = append(singers, singer.ToSinger())
-	}
-	return singers
-}
-
-func writeAudioResponse(c *gin.Context, events <-chan api.AudioEvent, envTag string) {
+func writeAudioResponse(c *gin.Context, events <-chan api.AudioEvent, context problemContext) {
 	final, err := readAudioEvents(events)
 	if err != nil {
 		if c.Request.Context().Err() != nil {
 			return
 		}
-		writeError(c, err)
+		writeProblem(c, err, context)
 		return
 	}
 	if c.Request.Context().Err() != nil {
@@ -129,7 +113,6 @@ func writeAudioResponse(c *gin.Context, events <-chan api.AudioEvent, envTag str
 	c.JSON(http.StatusOK, audioResponse{
 		State:  api.StateComplete,
 		Output: final.Output,
-		EnvTag: envTag,
 	})
 }
 
@@ -146,17 +129,17 @@ func readAudioEvents(events <-chan api.AudioEvent) (api.AudioEvent, error) {
 			if event.Err != nil {
 				return api.AudioEvent{}, event.Err
 			}
-			return api.AudioEvent{}, api.NewError(api.ErrorCodeInternalError, "")
+			return api.AudioEvent{}, api.NewError(api.ProblemTypeInternalError, "")
 		case api.StateQueuing, api.StateProcessing:
 			previous = event.State
 		default:
 			return api.AudioEvent{}, invalidAudioStateError()
 		}
 	}
-	return api.AudioEvent{}, api.NewError(api.ErrorCodeInternalError, "audio stream ended without terminal state")
+	return api.AudioEvent{}, api.NewError(api.ProblemTypeInternalError, "audio stream ended without terminal state")
 }
 
-func writeAudioStream(c *gin.Context, events <-chan api.AudioEvent, envTag string) {
+func writeAudioStream(c *gin.Context, events <-chan api.AudioEvent, context problemContext) {
 	writer := c.Writer
 	writer.Header().Set("Content-Type", "application/x-ndjson")
 	writer.WriteHeader(http.StatusOK)
@@ -168,7 +151,7 @@ func writeAudioStream(c *gin.Context, events <-chan api.AudioEvent, envTag strin
 			return
 		}
 		if err := validateAudioTransition(previous, event.State); err != nil {
-			writeAudioStreamError(encoder, writer, err)
+			writeAudioStreamError(encoder, writer, err, context)
 			return
 		}
 		switch event.State {
@@ -181,7 +164,6 @@ func writeAudioStream(c *gin.Context, events <-chan api.AudioEvent, envTag strin
 			if err := encoder.Encode(audioResponse{
 				State:  api.StateComplete,
 				Output: event.Output,
-				EnvTag: envTag,
 			}); err != nil {
 				return
 			}
@@ -190,12 +172,12 @@ func writeAudioStream(c *gin.Context, events <-chan api.AudioEvent, envTag strin
 		case api.StateError:
 			err := event.Err
 			if err == nil {
-				err = api.NewError(api.ErrorCodeInternalError, "")
+				err = api.NewError(api.ProblemTypeInternalError, "")
 			}
-			writeAudioStreamError(encoder, writer, err)
+			writeAudioStreamError(encoder, writer, err, context)
 			return
 		default:
-			writeAudioStreamError(encoder, writer, invalidAudioStateError())
+			writeAudioStreamError(encoder, writer, invalidAudioStateError(), context)
 			return
 		}
 		flushAudioStream(writer)
@@ -203,20 +185,13 @@ func writeAudioStream(c *gin.Context, events <-chan api.AudioEvent, envTag strin
 	writeAudioStreamError(
 		encoder,
 		writer,
-		api.NewError(api.ErrorCodeInternalError, "audio stream ended without terminal state"),
+		api.NewError(api.ProblemTypeInternalError, "audio stream ended without terminal state"),
+		context,
 	)
 }
 
-func writeAudioStreamError(encoder *json.Encoder, writer gin.ResponseWriter, err error) {
-	apiError := toAPIError(err)
-	if !errors.As(err, &apiError) {
-		audioLogger.Error("Internal audio stream error occurred", slog.Any("error", err))
-	}
-	_ = encoder.Encode(errorResponse{
-		State:   api.StateError,
-		Code:    apiError.Code,
-		Message: apiError.Message,
-	})
+func writeAudioStreamError(encoder *json.Encoder, writer gin.ResponseWriter, err error, context problemContext) {
+	_ = encoder.Encode(newStreamProblem(err, context))
 	flushAudioStream(writer)
 }
 
@@ -237,7 +212,7 @@ func validateAudioTransition(previous api.State, current api.State) error {
 }
 
 func invalidAudioStateError() error {
-	return api.NewError(api.ErrorCodeInternalError, "invalid audio state transition")
+	return api.NewError(api.ProblemTypeInternalError, "invalid audio state transition")
 }
 
 func flushAudioStream(writer gin.ResponseWriter) {

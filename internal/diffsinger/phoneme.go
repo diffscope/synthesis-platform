@@ -132,11 +132,11 @@ func (Architecture) Phoneme(
 
 	singerID, ok := getSingerIdentifier(singer)
 	if !ok {
-		return nil, api.NewError(api.ErrorCodeSingerNotExist, "")
+		return nil, api.NewSingerNotExistError(singer.ID, "")
 	}
 	metadata, ok := GetSinger(singerID)
 	if !ok {
-		return nil, api.NewError(api.ErrorCodeSingerNotExist, "")
+		return nil, api.NewSingerNotExistError(singer.ID, "")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -507,7 +507,7 @@ func runParallelPhonemeOperation(
 	case <-timer.C:
 		terminate()
 		<-done
-		return api.NewError(api.ErrorCodeInternalError, "phoneme conversion timed out")
+		return api.NewError(api.ProblemTypeInternalError, "phoneme conversion timed out")
 	}
 }
 
@@ -570,10 +570,20 @@ func recordOnsetFileHash(key singerLanguageKey, hash string) {
 }
 
 func singerConfigError(action string, err error) error {
+	detail := action
 	if err == nil {
-		return api.NewError(api.ErrorCodeSingerConfigInvalid, action)
+		return api.NewSingerConfigInvalidError(detail, api.ValidationIssue{
+			Pointer: "#/context/singer",
+			Type:    "configuration_invalid",
+			Detail:  detail,
+		})
 	}
-	return api.NewError(api.ErrorCodeSingerConfigInvalid, fmt.Sprintf("%s: %v", action, err))
+	detail = fmt.Sprintf("%s: %v", action, err)
+	return api.NewSingerConfigInvalidError(detail, api.ValidationIssue{
+		Pointer: "#/context/singer",
+		Type:    "configuration_invalid",
+		Detail:  detail,
+	})
 }
 
 func phonemeRuntimeError(err error) error {
@@ -583,5 +593,5 @@ func phonemeRuntimeError(err error) error {
 	if _, ok := err.(*api.Error); ok {
 		return err
 	}
-	return api.NewError(api.ErrorCodeInternalError, err.Error())
+	return api.NewError(api.ProblemTypeInternalError, err.Error())
 }

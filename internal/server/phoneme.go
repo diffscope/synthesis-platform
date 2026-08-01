@@ -32,7 +32,6 @@ var phonemeLogger = slog.With("component", "server.phoneme")
 type phonemeRequest struct {
 	Context *pronunciationContext `json:"context" validate:"required"`
 	Input   *phonemeInput         `json:"input" validate:"required"`
-	EnvTag  *string               `json:"env_tag"`
 }
 
 type phonemeInput struct {
@@ -42,7 +41,6 @@ type phonemeInput struct {
 type phonemeResponse struct {
 	State  api.State     `json:"state"`
 	Output phonemeOutput `json:"output"`
-	EnvTag string        `json:"env_tag"`
 }
 
 type phonemeOutput struct {
@@ -59,16 +57,11 @@ func PostPhoneme(c *gin.Context) {
 
 	archExtra := *request.Context.ArchExtra
 	singer := request.Context.Singer.ToSinger()
-	arch, ok := getArchitecture(*request.Context.Arch)
+	archName := *request.Context.Arch
+	context := problemContext{Arch: archName, Singer: singer.ID}
+	arch, ok := getArchitecture(archName)
 	if !ok {
-		writeError(c, newUnknownArchError())
-		return
-	}
-	envTag := arch.GetEnvTag(archExtra, []api.Singer{singer})
-	if request.EnvTag != nil && *request.EnvTag == envTag {
-		if c.Request.Context().Err() == nil {
-			c.Status(http.StatusNoContent)
-		}
+		writeProblem(c, newUnknownArchError(archName), context)
 		return
 	}
 
@@ -82,7 +75,7 @@ func PostPhoneme(c *gin.Context) {
 		if c.Request.Context().Err() != nil {
 			return
 		}
-		writeError(c, err)
+		writeProblem(c, err, context)
 		return
 	}
 
@@ -94,7 +87,6 @@ func PostPhoneme(c *gin.Context) {
 		Output: phonemeOutput{
 			Notes: notes,
 		},
-		EnvTag: envTag,
 	})
 }
 

@@ -21,18 +21,16 @@ package server
 import (
 	"net/http"
 
-	"diffscope-synthesis-platform/internal/appinfo"
-
 	"github.com/gin-gonic/gin"
 )
 
 type ApplicationInfo struct {
-	Version string `json:"version"`
+	APIVersion int `json:"api_version"`
 }
 
 func getApplicationInfo() ApplicationInfo {
 	return ApplicationInfo{
-		Version: appinfo.ApplicationSemver,
+		APIVersion: 1,
 	}
 }
 

@@ -16,21 +16,48 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>. *
  **************************************************************************/
 
-package api
+#include "native.h"
 
-import "encoding/json"
+#include <array>
+#include <string>
 
-type SingerInfo struct {
-	ID               string          `json:"id"`
-	Name             string          `json:"name"`
-	MixGroup         string          `json:"mix_group"`
-	Languages        []string        `json:"languages"`
-	DefaultLanguage  string          `json:"default_language"`
-	ArchSpecificInfo json.RawMessage `json:"arch_specific_info"`
-	DefaultExtra     json.RawMessage `json:"default_extra"`
+#include <synthrt/SVS/InferenceContrib.h>
+
+namespace dssp {
+
+	namespace {
+		thread_local std::string g_inferenceDigestKey;
+
+		void appendInferenceFullID(std::string &result, const srt::InferenceSpec *inference) {
+			if (!result.empty()) {
+				result += ',';
+			}
+
+			const auto &package = inference->parent();
+			result += package.id();
+			result += '@';
+			result += package.version().toString();
+			result += ':';
+			result += inference->id();
+		}
+
+	} // namespace
+
+} // namespace dssp
+
+const char *DSSP_GetDiffSingerInferenceDigestKey(DSSP_SRTSinger singer) {
+	const std::array inferences{
+		static_cast<srt::InferenceSpec *>(DSSP_GetDiffSingerDurationInference(singer)),
+		static_cast<srt::InferenceSpec *>(DSSP_GetDiffSingerPitchInference(singer)),
+		static_cast<srt::InferenceSpec *>(DSSP_GetDiffSingerVarianceInference(singer)),
+		static_cast<srt::InferenceSpec *>(DSSP_GetDiffSingerAcousticInference(singer)),
+		static_cast<srt::InferenceSpec *>(DSSP_GetDiffSingerVocoderInference(singer)),
+	};
+
+	dssp::g_inferenceDigestKey.clear();
+	for (const auto *inference : inferences) {
+		dssp::appendInferenceFullID(dssp::g_inferenceDigestKey, inference);
+	}
+	return dssp::g_inferenceDigestKey.c_str();
 }
 
-type SingerDemoAudio struct {
-	Name     string `json:"name"`
-	AudioURL string `json:"audio_url"`
-}

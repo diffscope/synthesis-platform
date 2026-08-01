@@ -132,20 +132,22 @@ func configureAudioResourceManagers() {
 func prepareAudioSingers(singers []api.Singer) (*dsinfer.AcousticInference, *dsinfer.VocoderInference, []string, error) {
 	var acousticInference *dsinfer.AcousticInference
 	var acousticInferenceHandle uintptr
+	var acousticInferenceSinger string
 	var vocoderInference *dsinfer.VocoderInference
 	var vocoderInferenceHandle uintptr
+	var vocoderInferenceSinger string
 	speakerIDs := make([]string, 0, len(singers))
 
 	for _, singer := range singers {
 		metadata, ok := getSingerMetadata(singer)
 		if !ok {
-			return nil, nil, nil, api.NewError(api.ErrorCodeSingerNotExist, "")
+			return nil, nil, nil, api.NewSingerNotExistError(singer.ID, "")
 		}
 		if metadata.acousticInference == nil || metadata.acousticInference.Handle() == 0 {
-			return nil, nil, nil, api.NewError(api.ErrorCodeSingerNotExist, "")
+			return nil, nil, nil, api.NewSingerNotExistError(singer.ID, "")
 		}
 		if metadata.vocoderInference == nil || metadata.vocoderInference.Handle() == 0 {
-			return nil, nil, nil, api.NewError(api.ErrorCodeSingerNotExist, "")
+			return nil, nil, nil, api.NewSingerNotExistError(singer.ID, "")
 		}
 
 		extra, err := parseSingerExtra(singer.Extra)
@@ -160,16 +162,26 @@ func prepareAudioSingers(singers []api.Singer) (*dsinfer.AcousticInference, *dsi
 		if acousticInference == nil {
 			acousticInference = metadata.acousticInference
 			acousticInferenceHandle = currentAcousticHandle
+			acousticInferenceSinger = singer.ID
 		} else if currentAcousticHandle != acousticInferenceHandle {
-			return nil, nil, nil, api.NewError(api.ErrorCodeSingersUnmixable, "singers use different acoustic inference")
+			return nil, nil, nil, api.NewSingersUnmixableError(
+				acousticInferenceSinger,
+				singer.ID,
+				"singers use different acoustic inference",
+			)
 		}
 
 		currentVocoderHandle := metadata.vocoderInference.Handle()
 		if vocoderInference == nil {
 			vocoderInference = metadata.vocoderInference
 			vocoderInferenceHandle = currentVocoderHandle
+			vocoderInferenceSinger = singer.ID
 		} else if currentVocoderHandle != vocoderInferenceHandle {
-			return nil, nil, nil, api.NewError(api.ErrorCodeSingersUnmixable, "singers use different vocoder inference")
+			return nil, nil, nil, api.NewSingersUnmixableError(
+				vocoderInferenceSinger,
+				singer.ID,
+				"singers use different vocoder inference",
+			)
 		}
 
 		speakerID, err := dsinfer.GetAcousticInferenceSpeakerID(metadata.SynthRTSinger, extra.Speaker)
@@ -187,7 +199,7 @@ func buildAudioParameters(parameters map[string]api.AudioParameter) ([]dsinfer.P
 	for _, id := range audioParameterIDs {
 		parameter, ok := parameters[id]
 		if !ok {
-			return nil, newInvalidParameterError(fmt.Sprintf("missing %s parameter", id))
+			return nil, api.NewInvalidParameterError(id, "missing", fmt.Sprintf("missing %s parameter", id))
 		}
 		built, err := builder.BuildParameter(
 			id,
@@ -198,7 +210,7 @@ func buildAudioParameters(parameters map[string]api.AudioParameter) ([]dsinfer.P
 			0,
 		)
 		if err != nil {
-			return nil, newInvalidParameterError(err.Error())
+			return nil, api.NewInvalidParameterError(id, "invalid_value", err.Error())
 		}
 		result = append(result, built)
 	}
@@ -398,7 +410,7 @@ func waitAcousticAudioInference(
 		}
 	}
 	return dsinfer.AcousticInferenceResult{
-		Err: api.NewError(api.ErrorCodeInternalError, "acoustic inference stream ended without terminal state"),
+		Err: api.NewError(api.ProblemTypeInternalError, "acoustic inference stream ended without terminal state"),
 	}, true
 }
 
@@ -443,7 +455,7 @@ func waitVocoderAudioInference(
 		}
 	}
 	return dsinfer.VocoderInferenceResult{
-		Err: api.NewError(api.ErrorCodeInternalError, "vocoder inference stream ended without terminal state"),
+		Err: api.NewError(api.ProblemTypeInternalError, "vocoder inference stream ended without terminal state"),
 	}, true
 }
 
@@ -496,7 +508,7 @@ func encodeAudioData(audioData *dsinfer.AudioData, format AudioFormat) ([]byte, 
 	case AudioFormatFLAC:
 		return dsinfer.EncodeFLAC(audioData)
 	default:
-		return nil, api.NewError(api.ErrorCodeInternalError, fmt.Sprintf("unsupported audio format %q", format))
+		return nil, api.NewError(api.ProblemTypeInternalError, fmt.Sprintf("unsupported audio format %q", format))
 	}
 }
 
@@ -508,7 +520,7 @@ func makeAudioDataURL(format AudioFormat, data []byte) (string, error) {
 	case AudioFormatFLAC:
 		mime = "audio/flac"
 	default:
-		return "", api.NewError(api.ErrorCodeInternalError, fmt.Sprintf("unsupported audio format %q", format))
+		return "", api.NewError(api.ProblemTypeInternalError, fmt.Sprintf("unsupported audio format %q", format))
 	}
 	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }

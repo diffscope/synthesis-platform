@@ -268,6 +268,8 @@ const uint8_t *DSSP_GetDiffSingerRawDataBytes(DSSP_DiffSingerRawData rawData);
  * dsinfer (inference)
  * ====================================================================== */
 
+const char *DSSP_GetDiffSingerInferenceDigestKey(DSSP_SRTSinger singer);
+
 typedef void *DSSP_DiffSingerDurationInference;
 
 DSSP_DiffSingerDurationInference DSSP_GetDiffSingerDurationInference(DSSP_SRTSinger singer);

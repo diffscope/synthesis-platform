@@ -103,7 +103,7 @@ func (Architecture) Duration(
 		return nil, durationAPIError(err)
 	}
 	if countDurationPhones(words) != countDurationMappingPhones(mapping) {
-		return nil, api.NewError(api.ErrorCodeInternalError, "duration word mapping shape does not match built words")
+		return nil, api.NewError(api.ProblemTypeInternalError, "duration word mapping shape does not match built words")
 	}
 	if len(words) == 0 {
 		events := make(chan api.DurationEvent, 1)
@@ -128,15 +128,16 @@ func configureDurationResourceManager() {
 func prepareDurationSingers(singers []api.Singer) (*dsinfer.DurationInference, []string, error) {
 	var durationInference *dsinfer.DurationInference
 	var durationInferenceHandle uintptr
+	var durationInferenceSinger string
 	speakerIDs := make([]string, 0, len(singers))
 
 	for _, singer := range singers {
 		metadata, ok := getSingerMetadata(singer)
 		if !ok {
-			return nil, nil, api.NewError(api.ErrorCodeSingerNotExist, "")
+			return nil, nil, api.NewSingerNotExistError(singer.ID, "")
 		}
 		if metadata.durationInference == nil || metadata.durationInference.Handle() == 0 {
-			return nil, nil, api.NewError(api.ErrorCodeSingerNotExist, "")
+			return nil, nil, api.NewSingerNotExistError(singer.ID, "")
 		}
 
 		extra, err := parseSingerExtra(singer.Extra)
@@ -151,8 +152,13 @@ func prepareDurationSingers(singers []api.Singer) (*dsinfer.DurationInference, [
 		if durationInference == nil {
 			durationInference = metadata.durationInference
 			durationInferenceHandle = currentHandle
+			durationInferenceSinger = singer.ID
 		} else if currentHandle != durationInferenceHandle {
-			return nil, nil, api.NewError(api.ErrorCodeSingersUnmixable, "singers use different duration inference")
+			return nil, nil, api.NewSingersUnmixableError(
+				durationInferenceSinger,
+				singer.ID,
+				"singers use different duration inference",
+			)
 		}
 
 		speakerID, err := dsinfer.GetDurationInferenceSpeakerID(metadata.SynthRTSinger, extra.Speaker)
@@ -316,7 +322,7 @@ func makeDurationOutput(
 ) (api.DurationOutput, error) {
 	if len(durations) != countDurationMappingPhones(mapping) {
 		return api.DurationOutput{}, api.NewError(
-			api.ErrorCodeInternalError,
+			api.ProblemTypeInternalError,
 			fmt.Sprintf("duration result count mismatch: expected %d, got %d", countDurationMappingPhones(mapping), len(durations)),
 		)
 	}
@@ -505,5 +511,5 @@ func durationAPIError(err error) error {
 	if errors.As(err, &apiError) {
 		return err
 	}
-	return api.NewError(api.ErrorCodeInternalError, err.Error())
+	return api.NewError(api.ProblemTypeInternalError, err.Error())
 }

@@ -19,8 +19,6 @@
 package server
 
 import (
-	"errors"
-	"log/slog"
 	"net/http"
 
 	"diffscope-synthesis-platform/internal/api"
@@ -28,16 +26,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var singerLogger = slog.With("component", "server.singer")
-
 type singerInfoResponse struct {
-	ID              string   `json:"id"`
-	Name            string   `json:"name"`
-	Arch            string   `json:"arch"`
-	Languages       []string `json:"languages"`
-	DefaultLanguage string   `json:"default_language"`
-	Extra           any      `json:"extra"`
-	DefaultExtra    any      `json:"default_extra"`
+	ID               string   `json:"id"`
+	Name             string   `json:"name"`
+	Arch             string   `json:"arch"`
+	MixGroup         string   `json:"mix_group"`
+	Languages        []string `json:"languages"`
+	DefaultLanguage  string   `json:"default_language"`
+	ArchSpecificInfo any      `json:"arch_specific_info"`
+	DefaultExtra     any      `json:"default_extra"`
 }
 
 type singerAvatarResponse struct {
@@ -54,12 +51,12 @@ func GetSingerList(c *gin.Context) {
 	for _, name := range registeredArchitectureNames() {
 		arch, ok := getArchitecture(name)
 		if !ok {
-			writeSingerError(c, newUnknownArchError())
+			writeSingerError(c, newUnknownArchError(name), problemContext{Arch: name})
 			return
 		}
 		singers, err := arch.GetSingerList(displayLanguage)
 		if err != nil {
-			writeSingerError(c, err)
+			writeSingerError(c, err, problemContext{Arch: name})
 			return
 		}
 		for _, singer := range singers {
@@ -70,70 +67,86 @@ func GetSingerList(c *gin.Context) {
 }
 
 func GetArchSingerList(c *gin.Context) {
-	arch, ok := getArchitecture(c.Param("arch_id"))
+	archName := c.Param("arch_id")
+	arch, ok := getArchitecture(archName)
 	if !ok {
-		writeSingerError(c, newUnknownArchError())
+		writeSingerError(c, newUnknownArchError(archName), problemContext{Arch: archName})
 		return
 	}
 	singers, err := arch.GetSingerList(c.Query("display_language"))
 	if err != nil {
-		writeSingerError(c, err)
+		writeSingerError(c, err, problemContext{Arch: archName})
 		return
 	}
-	c.JSON(http.StatusOK, singers)
+	response := make([]singerInfoResponse, 0, len(singers))
+	for _, singer := range singers {
+		response = append(response, newSingerInfoResponse(archName, singer))
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func GetArchSinger(c *gin.Context) {
-	arch, ok := getArchitecture(c.Param("arch_id"))
+	archName := c.Param("arch_id")
+	singerID := c.Param("singer_id")
+	arch, ok := getArchitecture(archName)
 	if !ok {
-		writeSingerError(c, newUnknownArchError())
+		writeSingerError(c, newUnknownArchError(archName), problemContext{Arch: archName, Singer: singerID})
 		return
 	}
-	singer, err := arch.GetSinger(c.Param("singer_id"), c.Query("display_language"))
+	singer, err := arch.GetSinger(singerID, c.Query("display_language"))
 	if err != nil {
-		writeSingerError(c, err)
+		writeSingerError(c, err, problemContext{Arch: archName, Singer: singerID})
 		return
 	}
-	c.JSON(http.StatusOK, singer)
+	c.JSON(http.StatusOK, newSingerInfoResponse(archName, singer))
 }
 
 func GetArchSingerAvatar(c *gin.Context) {
-	arch, ok := getArchitecture(c.Param("arch_id"))
+	archName := c.Param("arch_id")
+	singerID := c.Param("singer_id")
+	context := problemContext{Arch: archName, Singer: singerID}
+	arch, ok := getArchitecture(archName)
 	if !ok {
-		writeSingerError(c, newUnknownArchError())
+		writeSingerError(c, newUnknownArchError(archName), context)
 		return
 	}
-	avatarURL, err := arch.GetSingerAvatar(c.Param("singer_id"), c.Query("display_language"))
+	avatarURL, err := arch.GetSingerAvatar(singerID, c.Query("display_language"))
 	if err != nil {
-		writeSingerError(c, err)
+		writeSingerError(c, err, context)
 		return
 	}
 	c.JSON(http.StatusOK, singerAvatarResponse{AvatarURL: avatarURL})
 }
 
 func GetArchSingerBackground(c *gin.Context) {
-	arch, ok := getArchitecture(c.Param("arch_id"))
+	archName := c.Param("arch_id")
+	singerID := c.Param("singer_id")
+	context := problemContext{Arch: archName, Singer: singerID}
+	arch, ok := getArchitecture(archName)
 	if !ok {
-		writeSingerError(c, newUnknownArchError())
+		writeSingerError(c, newUnknownArchError(archName), context)
 		return
 	}
-	backgroundURL, err := arch.GetSingerBackground(c.Param("singer_id"), c.Query("display_language"))
+	backgroundURL, err := arch.GetSingerBackground(singerID, c.Query("display_language"))
 	if err != nil {
-		writeSingerError(c, err)
+		writeSingerError(c, err, context)
 		return
 	}
 	c.JSON(http.StatusOK, singerBackgroundResponse{BackgroundURL: backgroundURL})
 }
 
 func GetArchSingerDemoAudioList(c *gin.Context) {
-	arch, ok := getArchitecture(c.Param("arch_id"))
+	archName := c.Param("arch_id")
+	singerID := c.Param("singer_id")
+	context := problemContext{Arch: archName, Singer: singerID}
+	arch, ok := getArchitecture(archName)
 	if !ok {
-		writeSingerError(c, newUnknownArchError())
+		writeSingerError(c, newUnknownArchError(archName), context)
 		return
 	}
-	demoAudio, err := arch.GetSingerDemoAudioList(c.Param("singer_id"), c.Query("display_language"))
+	demoAudio, err := arch.GetSingerDemoAudioList(singerID, c.Query("display_language"))
 	if err != nil {
-		writeSingerError(c, err)
+		writeSingerError(c, err, context)
 		return
 	}
 	c.JSON(http.StatusOK, demoAudio)
@@ -141,32 +154,17 @@ func GetArchSingerDemoAudioList(c *gin.Context) {
 
 func newSingerInfoResponse(arch string, singer api.SingerInfo) singerInfoResponse {
 	return singerInfoResponse{
-		ID:              singer.ID,
-		Name:            singer.Name,
-		Arch:            arch,
-		Languages:       singer.Languages,
-		DefaultLanguage: singer.DefaultLanguage,
-		Extra:           singer.Extra,
-		DefaultExtra:    singer.DefaultExtra,
+		ID:               singer.ID,
+		Name:             singer.Name,
+		Arch:             arch,
+		MixGroup:         singer.MixGroup,
+		Languages:        singer.Languages,
+		DefaultLanguage:  singer.DefaultLanguage,
+		ArchSpecificInfo: singer.ArchSpecificInfo,
+		DefaultExtra:     singer.DefaultExtra,
 	}
 }
 
-func writeSingerError(c *gin.Context, err error) {
-	if c.Request.Context().Err() != nil {
-		return
-	}
-	apiError := toAPIError(err)
-	if !errors.As(err, &apiError) {
-		singerLogger.Error("Internal error occurred", slog.Any("error", err))
-	}
-	status := http.StatusUnprocessableEntity
-	switch apiError.Code {
-	case api.ErrorCodeUnknownArch, api.ErrorCodeSingerNotExist:
-		status = http.StatusNotFound
-	}
-	c.JSON(status, errorResponse{
-		State:   api.StateError,
-		Code:    apiError.Code,
-		Message: apiError.Message,
-	})
+func writeSingerError(c *gin.Context, err error, context problemContext) {
+	writeProblem(c, err, context)
 }

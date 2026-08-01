@@ -20,7 +20,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 
@@ -32,22 +31,14 @@ import (
 var durationLogger = slog.With("component", "server.duration")
 
 type durationRequest struct {
-	Context *durationContext          `json:"context" validate:"required"`
+	Context *multiSingerContext       `json:"context" validate:"required"`
 	Input   *api.DurationInputRequest `json:"input" validate:"required"`
-	EnvTag  *string                   `json:"env_tag"`
 	Stream  *bool                     `json:"stream"`
-}
-
-type durationContext struct {
-	Arch      *string             `json:"arch" validate:"required"`
-	ArchExtra *json.RawMessage    `json:"arch_extra" validate:"required"`
-	Singers   []api.SingerRequest `json:"singers" validate:"required,min=1,dive"`
 }
 
 type durationResponse struct {
 	State  api.State          `json:"state"`
 	Output api.DurationOutput `json:"output"`
-	EnvTag string             `json:"env_tag"`
 }
 
 type durationStateResponse struct {
@@ -63,20 +54,15 @@ func PostDuration(c *gin.Context) {
 	}
 
 	archExtra := *request.Context.ArchExtra
-	arch, ok := getArchitecture(*request.Context.Arch)
+	archName := *request.Context.Arch
+	context := problemContext{Arch: archName, Singers: singerIDs(request.Context.Singers)}
+	arch, ok := getArchitecture(archName)
 	if !ok {
-		writeError(c, newUnknownArchError())
+		writeProblem(c, newUnknownArchError(archName), context)
 		return
 	}
 
-	singers := request.singers()
-	envTag := arch.GetEnvTag(archExtra, singers)
-	if request.EnvTag != nil && *request.EnvTag == envTag {
-		if c.Request.Context().Err() == nil {
-			c.Status(http.StatusNoContent)
-		}
-		return
-	}
+	singers := request.Context.singers()
 
 	input := request.Input.ToDurationInput()
 	events, err := arch.Duration(
@@ -92,40 +78,32 @@ func PostDuration(c *gin.Context) {
 		if c.Request.Context().Err() != nil {
 			return
 		}
-		writeError(c, err)
+		writeProblem(c, err, context)
 		return
 	}
 	if events == nil {
-		writeError(c, api.NewError(api.ErrorCodeInternalError, "duration stream is nil"))
+		writeProblem(c, api.NewError(api.ProblemTypeInternalError, "duration stream is nil"), context)
 		return
 	}
 
 	if request.stream() {
-		writeDurationStream(c, events, envTag, input.Notes)
+		writeDurationStream(c, events, input.Notes, context)
 		return
 	}
-	writeDurationResponse(c, events, envTag, input.Notes)
+	writeDurationResponse(c, events, input.Notes, context)
 }
 
 func (r durationRequest) stream() bool {
 	return r.Stream != nil && *r.Stream
 }
 
-func (r durationRequest) singers() []api.Singer {
-	singers := make([]api.Singer, 0, len(r.Context.Singers))
-	for _, singer := range r.Context.Singers {
-		singers = append(singers, singer.ToSinger())
-	}
-	return singers
-}
-
-func writeDurationResponse(c *gin.Context, events <-chan api.DurationEvent, envTag string, notes []api.DurationNote) {
+func writeDurationResponse(c *gin.Context, events <-chan api.DurationEvent, notes []api.DurationNote, context problemContext) {
 	final, err := readDurationEvents(events, notes)
 	if err != nil {
 		if c.Request.Context().Err() != nil {
 			return
 		}
-		writeError(c, err)
+		writeProblem(c, err, context)
 		return
 	}
 	if c.Request.Context().Err() != nil {
@@ -134,7 +112,6 @@ func writeDurationResponse(c *gin.Context, events <-chan api.DurationEvent, envT
 	c.JSON(http.StatusOK, durationResponse{
 		State:  api.StateComplete,
 		Output: final.Output,
-		EnvTag: envTag,
 	})
 }
 
@@ -147,24 +124,24 @@ func readDurationEvents(events <-chan api.DurationEvent, notes []api.DurationNot
 		switch event.State {
 		case api.StateComplete:
 			if !isValidDurationOutput(event.Output, notes) {
-				return api.DurationEvent{}, api.NewError(api.ErrorCodeInternalError, "duration output shape does not match input")
+				return api.DurationEvent{}, api.NewError(api.ProblemTypeInternalError, "duration output shape does not match input")
 			}
 			return event, nil
 		case api.StateError:
 			if event.Err != nil {
 				return api.DurationEvent{}, event.Err
 			}
-			return api.DurationEvent{}, api.NewError(api.ErrorCodeInternalError, "")
+			return api.DurationEvent{}, api.NewError(api.ProblemTypeInternalError, "")
 		case api.StateQueuing, api.StateProcessing:
 			previous = event.State
 		default:
 			return api.DurationEvent{}, invalidDurationStateError()
 		}
 	}
-	return api.DurationEvent{}, api.NewError(api.ErrorCodeInternalError, "duration stream ended without terminal state")
+	return api.DurationEvent{}, api.NewError(api.ProblemTypeInternalError, "duration stream ended without terminal state")
 }
 
-func writeDurationStream(c *gin.Context, events <-chan api.DurationEvent, envTag string, notes []api.DurationNote) {
+func writeDurationStream(c *gin.Context, events <-chan api.DurationEvent, notes []api.DurationNote, context problemContext) {
 	writer := c.Writer
 	writer.Header().Set("Content-Type", "application/x-ndjson")
 	writer.WriteHeader(http.StatusOK)
@@ -176,7 +153,7 @@ func writeDurationStream(c *gin.Context, events <-chan api.DurationEvent, envTag
 			return
 		}
 		if err := validateDurationTransition(previous, event.State); err != nil {
-			writeDurationStreamError(encoder, writer, err)
+			writeDurationStreamError(encoder, writer, err, context)
 			return
 		}
 		switch event.State {
@@ -187,13 +164,12 @@ func writeDurationStream(c *gin.Context, events <-chan api.DurationEvent, envTag
 			previous = event.State
 		case api.StateComplete:
 			if !isValidDurationOutput(event.Output, notes) {
-				writeDurationStreamError(encoder, writer, api.NewError(api.ErrorCodeInternalError, "duration output shape does not match input"))
+				writeDurationStreamError(encoder, writer, api.NewError(api.ProblemTypeInternalError, "duration output shape does not match input"), context)
 				return
 			}
 			if err := encoder.Encode(durationResponse{
 				State:  api.StateComplete,
 				Output: event.Output,
-				EnvTag: envTag,
 			}); err != nil {
 				return
 			}
@@ -202,12 +178,12 @@ func writeDurationStream(c *gin.Context, events <-chan api.DurationEvent, envTag
 		case api.StateError:
 			err := event.Err
 			if err == nil {
-				err = api.NewError(api.ErrorCodeInternalError, "")
+				err = api.NewError(api.ProblemTypeInternalError, "")
 			}
-			writeDurationStreamError(encoder, writer, err)
+			writeDurationStreamError(encoder, writer, err, context)
 			return
 		default:
-			writeDurationStreamError(encoder, writer, invalidDurationStateError())
+			writeDurationStreamError(encoder, writer, invalidDurationStateError(), context)
 			return
 		}
 		flushDurationStream(writer)
@@ -215,20 +191,13 @@ func writeDurationStream(c *gin.Context, events <-chan api.DurationEvent, envTag
 	writeDurationStreamError(
 		encoder,
 		writer,
-		api.NewError(api.ErrorCodeInternalError, "duration stream ended without terminal state"),
+		api.NewError(api.ProblemTypeInternalError, "duration stream ended without terminal state"),
+		context,
 	)
 }
 
-func writeDurationStreamError(encoder *json.Encoder, writer gin.ResponseWriter, err error) {
-	apiError := toAPIError(err)
-	if !errors.As(err, &apiError) {
-		durationLogger.Error("Internal duration stream error occurred", slog.Any("error", err))
-	}
-	_ = encoder.Encode(errorResponse{
-		State:   api.StateError,
-		Code:    apiError.Code,
-		Message: apiError.Message,
-	})
+func writeDurationStreamError(encoder *json.Encoder, writer gin.ResponseWriter, err error, context problemContext) {
+	_ = encoder.Encode(newStreamProblem(err, context))
 	flushDurationStream(writer)
 }
 
@@ -249,7 +218,7 @@ func validateDurationTransition(previous api.State, current api.State) error {
 }
 
 func invalidDurationStateError() error {
-	return api.NewError(api.ErrorCodeInternalError, "invalid duration state transition")
+	return api.NewError(api.ProblemTypeInternalError, "invalid duration state transition")
 }
 
 func isValidDurationOutput(output api.DurationOutput, notes []api.DurationNote) bool {

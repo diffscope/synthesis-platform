@@ -61,7 +61,7 @@ func (Architecture) Pronunciation(
 
 	metadata, ok := getSingerMetadata(singer)
 	if !ok {
-		return nil, api.NewError(api.ErrorCodeSingerNotExist, "")
+		return nil, api.NewSingerNotExistError(singer.ID, "")
 	}
 
 	input := make([]languageconversion.Lyric, 0, len(lyrics))

@@ -138,10 +138,20 @@ func (r singerExtraRequest) ToSingerExtra() SingerExtra {
 func parseArchExtra(data json.RawMessage) (ArchExtra, error) {
 	var request archExtraRequest
 	if err := json.Unmarshal(data, &request); err != nil {
-		return ArchExtra{}, api.NewError(api.ErrorCodeSingerConfigInvalid, fmt.Sprintf("parse arch extra: %v", err))
+		detail := fmt.Sprintf("parse arch extra: %v", err)
+		return ArchExtra{}, api.NewSingerConfigInvalidError(detail, api.ValidationIssue{
+			Pointer: "#/context/arch_extra",
+			Type:    "invalid_json",
+			Detail:  err.Error(),
+		})
 	}
 	if err := extraValidator.Struct(request); err != nil {
-		return ArchExtra{}, api.NewError(api.ErrorCodeSingerConfigInvalid, fmt.Sprintf("validate arch extra: %v", err))
+		detail := fmt.Sprintf("validate arch extra: %v", err)
+		return ArchExtra{}, api.NewSingerConfigInvalidError(detail, api.ValidationIssue{
+			Pointer: "#/context/arch_extra",
+			Type:    "invalid_value",
+			Detail:  err.Error(),
+		})
 	}
 	return request.ToArchExtra(), nil
 }
@@ -149,10 +159,20 @@ func parseArchExtra(data json.RawMessage) (ArchExtra, error) {
 func parseSingerExtra(data json.RawMessage) (SingerExtra, error) {
 	var request singerExtraRequest
 	if err := json.Unmarshal(data, &request); err != nil {
-		return SingerExtra{}, api.NewError(api.ErrorCodeSingerConfigInvalid, fmt.Sprintf("parse singer extra: %v", err))
+		detail := fmt.Sprintf("parse singer extra: %v", err)
+		return SingerExtra{}, api.NewSingerConfigInvalidError(detail, api.ValidationIssue{
+			Pointer: "#/context",
+			Type:    "invalid_singer_extra",
+			Detail:  err.Error(),
+		})
 	}
 	if err := extraValidator.Struct(request); err != nil {
-		return SingerExtra{}, api.NewError(api.ErrorCodeSingerConfigInvalid, fmt.Sprintf("validate singer extra: %v", err))
+		detail := fmt.Sprintf("validate singer extra: %v", err)
+		return SingerExtra{}, api.NewSingerConfigInvalidError(detail, api.ValidationIssue{
+			Pointer: "#/context",
+			Type:    "required",
+			Detail:  "singer extra must identify a speaker",
+		})
 	}
 	return request.ToSingerExtra(), nil
 }
@@ -160,12 +180,17 @@ func parseSingerExtra(data json.RawMessage) (SingerExtra, error) {
 func validateSingerExtraSpeaker(metadata SingerMetadata, speaker string) error {
 	if len(metadata.Speakers) == 0 {
 		if speaker != "" {
-			return api.NewError(api.ErrorCodeInternalError, "singer does not define speakers")
+			return api.NewError(api.ProblemTypeInternalError, "singer does not define speakers")
 		}
 		return nil
 	}
 	if _, ok := metadata.Speakers[speaker]; !ok {
-		return api.NewError(api.ErrorCodeSingerConfigInvalid, fmt.Sprintf("speaker %q does not exist", speaker))
+		detail := fmt.Sprintf("speaker %q does not exist", speaker)
+		return api.NewSingerConfigInvalidError(detail, api.ValidationIssue{
+			Pointer: "#/context",
+			Type:    "unknown_speaker",
+			Detail:  detail,
+		})
 	}
 	return nil
 }

@@ -19,7 +19,9 @@
 package diffsinger
 
 import (
+	"crypto/sha512"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -77,6 +79,7 @@ type SingerMetadata struct {
 	PackageDirectory string
 	PackageHash      string
 	SingerConfigPath string
+	MixGroup         string
 
 	Avatar     *packageinfo.MultilingualText
 	Background *packageinfo.MultilingualText
@@ -338,6 +341,10 @@ func LoadSingerMetadata(packagesDir string) (map[SingerIdentifier]SingerMetadata
 			continue
 		}
 		item.SynthRTSinger = srtSinger
+		inferenceDigestKey := dsinfer.GetInferenceDigestKey(srtSinger)
+		mixGroupDigest := sha512.Sum512([]byte(inferenceDigestKey))
+		item.MixGroup = hex.EncodeToString(mixGroupDigest[:])
+
 		durationInference, err := dsinfer.GetDurationInference(srtSinger)
 		if err != nil {
 			logLoadError(id.PackageID, id.Version.String(), id.SingerID, singerConfigPath, fmt.Errorf("get duration inference: %w", err))
@@ -823,27 +830,28 @@ func newSingerInfo(id SingerIdentifier, metadata SingerMetadata, displayLanguage
 
 	extra, err := json.Marshal(singerInfoExtra{Speakers: speakers})
 	if err != nil {
-		return api.SingerInfo{}, api.NewError(api.ErrorCodeInternalError, fmt.Sprintf("marshal singer extra: %v", err))
+		return api.SingerInfo{}, api.NewError(api.ProblemTypeInternalError, fmt.Sprintf("marshal singer extra: %v", err))
 	}
 	defaultExtra, err := json.Marshal(singerInfoDefaultExtra{Speaker: defaultSpeaker})
 	if err != nil {
-		return api.SingerInfo{}, api.NewError(api.ErrorCodeInternalError, fmt.Sprintf("marshal singer default extra: %v", err))
+		return api.SingerInfo{}, api.NewError(api.ProblemTypeInternalError, fmt.Sprintf("marshal singer default extra: %v", err))
 	}
 
 	return api.SingerInfo{
-		ID:              id.String(),
-		Name:            localizeMultilingualText(metadata.Name, displayLanguage),
-		Languages:       languages,
-		DefaultLanguage: metadata.DefaultLanguage,
-		Extra:           extra,
-		DefaultExtra:    defaultExtra,
+		ID:               id.String(),
+		Name:             localizeMultilingualText(metadata.Name, displayLanguage),
+		MixGroup:         metadata.MixGroup,
+		Languages:        languages,
+		DefaultLanguage:  metadata.DefaultLanguage,
+		ArchSpecificInfo: extra,
+		DefaultExtra:     defaultExtra,
 	}, nil
 }
 
 func getSingerByAPIID(id string) (SingerIdentifier, SingerMetadata, error) {
 	ref, err := packageinfo.ParsePackageReference(id)
 	if err != nil || ref.Type != packageinfo.PackageReferenceTypeSinger || ref.PackageID == "" || ref.Version == nil || ref.SingerID == "" {
-		return SingerIdentifier{}, SingerMetadata{}, api.NewError(api.ErrorCodeSingerNotExist, "")
+		return SingerIdentifier{}, SingerMetadata{}, api.NewSingerNotExistError(id, "")
 	}
 	singerID := SingerIdentifier{
 		PackageID: ref.PackageID,
@@ -852,7 +860,7 @@ func getSingerByAPIID(id string) (SingerIdentifier, SingerMetadata, error) {
 	}
 	metadata, ok := GetSinger(singerID)
 	if !ok {
-		return SingerIdentifier{}, SingerMetadata{}, api.NewError(api.ErrorCodeSingerNotExist, "")
+		return SingerIdentifier{}, SingerMetadata{}, api.NewSingerNotExistError(id, "")
 	}
 	return singerID, metadata, nil
 }
@@ -912,7 +920,7 @@ func multilingualFileDataURL(text packageinfo.MultilingualText, displayLanguage 
 func fileDataURL(filePath string) (string, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return "", api.NewError(api.ErrorCodeInternalError, fmt.Sprintf("read resource file: %v", err))
+		return "", api.NewError(api.ProblemTypeInternalError, fmt.Sprintf("read resource file: %v", err))
 	}
 	mimeType := http.DetectContentType(data)
 	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data), nil

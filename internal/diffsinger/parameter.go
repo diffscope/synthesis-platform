@@ -152,7 +152,7 @@ func (Architecture) Parameter(
 		}
 		if !plan.needsPitch() {
 			if _, ok := parameters[parameterIDPitch]; !ok {
-				return nil, newInvalidParameterError("missing pitch parameter")
+				return nil, newInvalidParameterError(parameterIDPitch, "missing", "missing pitch parameter")
 			}
 		}
 	}
@@ -195,7 +195,11 @@ func buildParameterPlan(singers []api.Singer, parameters map[string]api.Paramete
 		case parameterIDEnergy, parameterIDBreathiness, parameterIDVoicing, parameterIDTension, parameterIDMouthOpening:
 			plan.varianceRetakes[id] = true
 		default:
-			return parameterPlan{}, newInvalidParameterError(fmt.Sprintf("parameter %q does not support retake", id))
+			return parameterPlan{}, newInvalidParameterError(
+				id,
+				"retake_not_supported",
+				fmt.Sprintf("parameter %q does not support retake", id),
+			)
 		}
 	}
 	if plan.needsPitch() {
@@ -220,15 +224,16 @@ func buildParameterPlan(singers []api.Singer, parameters map[string]api.Paramete
 func prepareParameterPitchSingers(singers []api.Singer) (*dsinfer.PitchInference, []string, error) {
 	var pitchInference *dsinfer.PitchInference
 	var pitchInferenceHandle uintptr
+	var pitchInferenceSinger string
 	speakerIDs := make([]string, 0, len(singers))
 
 	for _, singer := range singers {
 		metadata, ok := getSingerMetadata(singer)
 		if !ok {
-			return nil, nil, api.NewError(api.ErrorCodeSingerNotExist, "")
+			return nil, nil, api.NewSingerNotExistError(singer.ID, "")
 		}
 		if metadata.pitchInference == nil || metadata.pitchInference.Handle() == 0 {
-			return nil, nil, api.NewError(api.ErrorCodeSingerNotExist, "")
+			return nil, nil, api.NewSingerNotExistError(singer.ID, "")
 		}
 
 		extra, err := parseSingerExtra(singer.Extra)
@@ -243,8 +248,13 @@ func prepareParameterPitchSingers(singers []api.Singer) (*dsinfer.PitchInference
 		if pitchInference == nil {
 			pitchInference = metadata.pitchInference
 			pitchInferenceHandle = currentHandle
+			pitchInferenceSinger = singer.ID
 		} else if currentHandle != pitchInferenceHandle {
-			return nil, nil, api.NewError(api.ErrorCodeSingersUnmixable, "singers use different pitch inference")
+			return nil, nil, api.NewSingersUnmixableError(
+				pitchInferenceSinger,
+				singer.ID,
+				"singers use different pitch inference",
+			)
 		}
 
 		speakerID, err := dsinfer.GetPitchInferenceSpeakerID(metadata.SynthRTSinger, extra.Speaker)
@@ -260,15 +270,16 @@ func prepareParameterPitchSingers(singers []api.Singer) (*dsinfer.PitchInference
 func prepareParameterVarianceSingers(singers []api.Singer) (*dsinfer.VarianceInference, []string, error) {
 	var varianceInference *dsinfer.VarianceInference
 	var varianceInferenceHandle uintptr
+	var varianceInferenceSinger string
 	speakerIDs := make([]string, 0, len(singers))
 
 	for _, singer := range singers {
 		metadata, ok := getSingerMetadata(singer)
 		if !ok {
-			return nil, nil, api.NewError(api.ErrorCodeSingerNotExist, "")
+			return nil, nil, api.NewSingerNotExistError(singer.ID, "")
 		}
 		if metadata.varianceInference == nil || metadata.varianceInference.Handle() == 0 {
-			return nil, nil, api.NewError(api.ErrorCodeSingerNotExist, "")
+			return nil, nil, api.NewSingerNotExistError(singer.ID, "")
 		}
 
 		extra, err := parseSingerExtra(singer.Extra)
@@ -283,8 +294,13 @@ func prepareParameterVarianceSingers(singers []api.Singer) (*dsinfer.VarianceInf
 		if varianceInference == nil {
 			varianceInference = metadata.varianceInference
 			varianceInferenceHandle = currentHandle
+			varianceInferenceSinger = singer.ID
 		} else if currentHandle != varianceInferenceHandle {
-			return nil, nil, api.NewError(api.ErrorCodeSingersUnmixable, "singers use different variance inference")
+			return nil, nil, api.NewSingersUnmixableError(
+				varianceInferenceSinger,
+				singer.ID,
+				"singers use different variance inference",
+			)
 		}
 
 		speakerID, err := dsinfer.GetVarianceInferenceSpeakerID(metadata.SynthRTSinger, extra.Speaker)
@@ -324,14 +340,14 @@ func convertParameterNotes(notes []api.Note) []builder.Note {
 func buildPitchParameters(parameters map[string]api.Parameter) ([]dsinfer.Parameter, error) {
 	expressiveness, ok := parameters[parameterIDExpressiveness]
 	if !ok {
-		return nil, newInvalidParameterError("missing expressiveness parameter")
+		return nil, newInvalidParameterError(parameterIDExpressiveness, "missing", "missing expressiveness parameter")
 	}
 	pitch, ok := parameters[parameterIDPitch]
 	if !ok {
-		return nil, newInvalidParameterError("missing pitch parameter")
+		return nil, newInvalidParameterError(parameterIDPitch, "missing", "missing pitch parameter")
 	}
 	if pitch.Retake == nil {
-		return nil, newInvalidParameterError("missing pitch retake")
+		return nil, newInvalidParameterError(parameterIDPitch, "retake_required", "missing pitch retake")
 	}
 
 	expressivenessParameter, err := buildParameter(parameterIDExpressiveness, expressiveness, false)
@@ -360,7 +376,7 @@ func buildVarianceParameters(
 	} else {
 		pitchParameter, ok := parameters[parameterIDPitch]
 		if !ok {
-			return nil, newInvalidParameterError("missing pitch parameter")
+			return nil, newInvalidParameterError(parameterIDPitch, "missing", "missing pitch parameter")
 		}
 		parameter, err := buildParameter(parameterIDPitch, pitchParameter, false)
 		if err != nil {
@@ -387,7 +403,7 @@ func buildParameter(id string, parameter api.Parameter, retake bool) (dsinfer.Pa
 	retakeLength := 0
 	if retake {
 		if parameter.Retake == nil {
-			return dsinfer.Parameter{}, newInvalidParameterError(fmt.Sprintf("missing %s retake", id))
+			return dsinfer.Parameter{}, newInvalidParameterError(id, "retake_required", fmt.Sprintf("missing %s retake", id))
 		}
 		retakePosition = parameter.Retake.Position
 		retakeLength = parameter.Retake.Length
@@ -395,7 +411,7 @@ func buildParameter(id string, parameter api.Parameter, retake bool) (dsinfer.Pa
 	values := parameterValuesOrDefault(id, parameter.Values)
 	result, err := builder.BuildParameter(id, parameter.SampleRate, values, retake, retakePosition, retakeLength)
 	if err != nil {
-		return dsinfer.Parameter{}, newInvalidParameterError(err.Error())
+		return dsinfer.Parameter{}, newInvalidParameterError(id, "invalid_value", err.Error())
 	}
 	return result, nil
 }
@@ -458,7 +474,7 @@ func runParameterInference(
 			return
 		}
 		if id != parameterIDPitch {
-			sendParameterError(ctx, events, api.NewError(api.ErrorCodeInternalError, "pitch result tag mismatch"))
+			sendParameterError(ctx, events, api.NewError(api.ProblemTypeInternalError, "pitch result tag mismatch"))
 			return
 		}
 		output.Parameters[parameterIDPitch] = api.ParameterOutputParameter{
@@ -665,7 +681,7 @@ func waitPitchParameterInference(
 		}
 	}
 	return dsinfer.PitchInferenceResult{
-		Err: api.NewError(api.ErrorCodeInternalError, "pitch inference stream ended without terminal state"),
+		Err: api.NewError(api.ProblemTypeInternalError, "pitch inference stream ended without terminal state"),
 	}, true
 }
 
@@ -718,7 +734,7 @@ func waitVarianceParameterInference(
 		}
 	}
 	return dsinfer.VarianceInferenceResult{
-		Err: api.NewError(api.ErrorCodeInternalError, "variance inference stream ended without terminal state"),
+		Err: api.NewError(api.ProblemTypeInternalError, "variance inference stream ended without terminal state"),
 	}, true
 }
 
@@ -809,8 +825,8 @@ func cloneParameterOutput(parameters map[string]api.ParameterOutputParameter) ma
 	return result
 }
 
-func newInvalidParameterError(message string) error {
-	return api.NewError(api.ErrorCodeInvalidParameter, message)
+func newInvalidParameterError(parameterID string, errorType string, detail string) error {
+	return api.NewInvalidParameterError(parameterID, errorType, detail)
 }
 
 func parameterAPIError(err error) error {
@@ -821,5 +837,5 @@ func parameterAPIError(err error) error {
 	if errors.As(err, &apiError) {
 		return err
 	}
-	return api.NewError(api.ErrorCodeInternalError, err.Error())
+	return api.NewError(api.ProblemTypeInternalError, err.Error())
 }

@@ -16,21 +16,42 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>. *
  **************************************************************************/
 
-package api
+package server
 
-import "encoding/json"
+import (
+	"log/slog"
+	"net/http"
 
-type SingerInfo struct {
-	ID               string          `json:"id"`
-	Name             string          `json:"name"`
-	MixGroup         string          `json:"mix_group"`
-	Languages        []string        `json:"languages"`
-	DefaultLanguage  string          `json:"default_language"`
-	ArchSpecificInfo json.RawMessage `json:"arch_specific_info"`
-	DefaultExtra     json.RawMessage `json:"default_extra"`
+	"github.com/gin-gonic/gin"
+)
+
+var envTagLogger = slog.With("component", "server.env_tag")
+
+type envTagRequest struct {
+	Context *multiSingerContext `json:"context" validate:"required"`
 }
 
-type SingerDemoAudio struct {
-	Name     string `json:"name"`
-	AudioURL string `json:"audio_url"`
+type envTagResponse struct {
+	EnvTag string `json:"env_tag"`
+}
+
+func PostEnvTag(c *gin.Context) {
+	var request envTagRequest
+	if err := decodeRequest(c, &request); err != nil {
+		envTagLogger.Error("Invalid environment tag request", slog.Any("error", err))
+		writeBadRequest(c, err)
+		return
+	}
+
+	archName := *request.Context.Arch
+	context := problemContext{Arch: archName, Singers: singerIDs(request.Context.Singers)}
+	arch, ok := getArchitecture(archName)
+	if !ok {
+		writeProblem(c, newUnknownArchError(archName), context)
+		return
+	}
+
+	c.JSON(http.StatusOK, envTagResponse{
+		EnvTag: arch.GetEnvTag(*request.Context.ArchExtra, request.Context.singers()),
+	})
 }

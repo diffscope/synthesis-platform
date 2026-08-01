@@ -22,7 +22,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net/http"
+	"reflect"
+	"strings"
 
 	"diffscope-synthesis-platform/internal/api"
 
@@ -32,8 +33,39 @@ import (
 
 var requestValidator = newRequestValidator()
 
+type multiSingerContext struct {
+	Arch      *string             `json:"arch" validate:"required"`
+	ArchExtra *json.RawMessage    `json:"arch_extra" validate:"required"`
+	Singers   []api.SingerRequest `json:"singers" validate:"required,min=1,dive"`
+}
+
+func (c multiSingerContext) singers() []api.Singer {
+	singers := make([]api.Singer, 0, len(c.Singers))
+	for _, singer := range c.Singers {
+		singers = append(singers, singer.ToSinger())
+	}
+	return singers
+}
+
+func singerIDs(singers []api.SingerRequest) []string {
+	ids := make([]string, 0, len(singers))
+	for _, singer := range singers {
+		if singer.ID != nil {
+			ids = append(ids, *singer.ID)
+		}
+	}
+	return ids
+}
+
 func newRequestValidator() *validator.Validate {
 	validate := validator.New()
+	validate.RegisterTagNameFunc(func(field reflect.StructField) string {
+		name := strings.SplitN(field.Tag.Get("json"), ",", 2)[0]
+		if name == "" || name == "-" {
+			return field.Name
+		}
+		return name
+	})
 	validate.RegisterStructValidation(validateDurationRequest, durationRequest{})
 	validate.RegisterStructValidation(validateParameterRequest, parameterRequest{})
 	validate.RegisterStructValidation(validateAudioRequest, audioRequest{})
@@ -59,14 +91,120 @@ func decodeJSON(c *gin.Context, value any) error {
 }
 
 func writeBadRequest(c *gin.Context, err error) {
-	if c.Request.Context().Err() != nil {
-		return
+	writeProblem(c, newRequestValidationError(err), problemContext{})
+}
+
+func newRequestValidationError(err error) error {
+	detail := "The request body is invalid."
+	issues := requestValidationIssues(err)
+	return api.NewValidationError(detail, issues...)
+}
+
+func requestValidationIssues(err error) []api.ValidationIssue {
+	if validationErrors, ok := err.(validator.ValidationErrors); ok {
+		issues := make([]api.ValidationIssue, 0, len(validationErrors))
+		for _, validationError := range validationErrors {
+			pointer := validationPointer(validationError.Namespace())
+			switch validationError.Tag() {
+			case "duration_mix", "parameter_mix", "audio_mix":
+				pointer = "#/input/mix"
+			}
+			issues = append(issues, api.ValidationIssue{
+				Pointer: pointer,
+				Type:    validationIssueType(validationError.Tag()),
+				Detail:  validationIssueDetail(validationError),
+			})
+		}
+		return issues
 	}
-	message := ""
-	if err != nil {
-		message = err.Error()
+
+	pointer := "#"
+	issueType := "invalid_json"
+	issueDetail := "must contain exactly one valid JSON value"
+
+	var unmarshalTypeError *json.UnmarshalTypeError
+	switch {
+	case errors.As(err, &unmarshalTypeError):
+		pointer = jsonFieldPointer(unmarshalTypeError.Field)
+		issueType = "invalid_type"
+		issueDetail = unmarshalTypeError.Error()
+	case errors.Is(err, io.EOF):
+		issueType = "required"
+		issueDetail = "request body is required"
+	case err != nil:
+		issueDetail = err.Error()
 	}
-	c.JSON(http.StatusBadRequest, gin.H{"message": message})
+
+	return []api.ValidationIssue{{
+		Pointer: pointer,
+		Type:    issueType,
+		Detail:  issueDetail,
+	}}
+}
+
+func validationPointer(namespace string) string {
+	parts := splitFieldPath(namespace)
+	if len(parts) > 0 {
+		parts = parts[1:]
+	}
+	return jsonPointer(parts)
+}
+
+func jsonFieldPointer(field string) string {
+	return jsonPointer(splitFieldPath(field))
+}
+
+func splitFieldPath(field string) []string {
+	field = strings.NewReplacer("[", ".", "]", "").Replace(field)
+	rawParts := strings.Split(field, ".")
+	parts := make([]string, 0, len(rawParts))
+	for _, part := range rawParts {
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return parts
+}
+
+func jsonPointer(parts []string) string {
+	if len(parts) == 0 {
+		return "#"
+	}
+	escaped := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.ReplaceAll(part, "~", "~0")
+		part = strings.ReplaceAll(part, "/", "~1")
+		escaped = append(escaped, part)
+	}
+	return "#/" + strings.Join(escaped, "/")
+}
+
+func validationIssueType(tag string) string {
+	switch tag {
+	case "duration_mix", "parameter_mix", "audio_mix":
+		return "invalid_mix"
+	default:
+		return tag
+	}
+}
+
+func validationIssueDetail(field validator.FieldError) string {
+	switch field.Tag() {
+	case "required":
+		return "is required"
+	case "min":
+		return "must contain at least " + field.Param() + " item(s)"
+	case "gte":
+		return "must be greater than or equal to " + field.Param()
+	case "lte":
+		return "must be less than or equal to " + field.Param()
+	case "gt":
+		return "must be greater than " + field.Param()
+	case "duration_mix", "parameter_mix", "audio_mix":
+		return "must contain one value per additional singer, use values from 0 to 1, and have a sum no greater than 1"
+	default:
+		return "failed " + field.Tag() + " validation"
+	}
 }
 
 func validateDurationRequest(sl validator.StructLevel) {

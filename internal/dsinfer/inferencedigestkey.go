@@ -16,21 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>. *
  **************************************************************************/
 
-package api
+package dsinfer
 
-import "encoding/json"
+import (
+	"diffscope-synthesis-platform/internal/synthrt"
+	"diffscope-synthesis-platform/native"
+)
 
-type SingerInfo struct {
-	ID               string          `json:"id"`
-	Name             string          `json:"name"`
-	MixGroup         string          `json:"mix_group"`
-	Languages        []string        `json:"languages"`
-	DefaultLanguage  string          `json:"default_language"`
-	ArchSpecificInfo json.RawMessage `json:"arch_specific_info"`
-	DefaultExtra     json.RawMessage `json:"default_extra"`
-}
-
-type SingerDemoAudio struct {
-	Name     string `json:"name"`
-	AudioURL string `json:"audio_url"`
+func GetInferenceDigestKey(singer *synthrt.Singer) string {
+	return native.DSSP_GetDiffSingerInferenceDigestKey(singer.Handle())
 }
