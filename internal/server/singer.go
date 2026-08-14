@@ -27,14 +27,14 @@ import (
 )
 
 type singerInfoResponse struct {
-	ID               string   `json:"id"`
-	Name             string   `json:"name"`
-	Arch             string   `json:"arch"`
-	MixGroup         string   `json:"mix_group"`
-	Languages        []string `json:"languages"`
-	DefaultLanguage  string   `json:"default_language"`
-	ArchSpecificInfo any      `json:"arch_specific_info"`
-	DefaultExtra     any      `json:"default_extra"`
+	ID               string                            `json:"id"`
+	Name             string                            `json:"name"`
+	Arch             string                            `json:"arch"`
+	MixGroup         string                            `json:"mix_group"`
+	Languages        map[string]api.SingerLanguageInfo `json:"languages"`
+	DefaultLanguage  string                            `json:"default_language"`
+	ArchSpecificInfo any                               `json:"arch_specific_info"`
+	DefaultExtra     any                               `json:"default_extra"`
 }
 
 type singerAvatarResponse struct {

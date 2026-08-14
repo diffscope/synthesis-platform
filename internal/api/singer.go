@@ -21,13 +21,18 @@ package api
 import "encoding/json"
 
 type SingerInfo struct {
-	ID               string          `json:"id"`
-	Name             string          `json:"name"`
-	MixGroup         string          `json:"mix_group"`
-	Languages        []string        `json:"languages"`
-	DefaultLanguage  string          `json:"default_language"`
-	ArchSpecificInfo json.RawMessage `json:"arch_specific_info"`
-	DefaultExtra     json.RawMessage `json:"default_extra"`
+	ID               string                        `json:"id"`
+	Name             string                        `json:"name"`
+	MixGroup         string                        `json:"mix_group"`
+	Languages        map[string]SingerLanguageInfo `json:"languages"`
+	DefaultLanguage  string                        `json:"default_language"`
+	ArchSpecificInfo json.RawMessage               `json:"arch_specific_info"`
+	DefaultExtra     json.RawMessage               `json:"default_extra"`
+}
+
+type SingerLanguageInfo struct {
+	Name         string `json:"name"`
+	DefaultLyric string `json:"default_lyric"`
 }
 
 type SingerDemoAudio struct {

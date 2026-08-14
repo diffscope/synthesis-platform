@@ -821,7 +821,7 @@ func (Architecture) GetSingerDemoAudioList(id string, displayLanguage string) ([
 }
 
 func newSingerInfo(id SingerIdentifier, metadata SingerMetadata, displayLanguage string) (api.SingerInfo, error) {
-	languages := sortedLanguageIDs(metadata.Languages)
+	languages := newSingerLanguages(metadata.Languages)
 	speakers := sortedSpeakerIDs(metadata.Speakers)
 	defaultSpeaker := ""
 	if len(speakers) > 0 {
@@ -865,13 +865,16 @@ func getSingerByAPIID(id string) (SingerIdentifier, SingerMetadata, error) {
 	return singerID, metadata, nil
 }
 
-func sortedLanguageIDs(items map[string]SingerLanguage) []string {
-	ids := make([]string, 0, len(items))
+func newSingerLanguages(items map[string]SingerLanguage) map[string]api.SingerLanguageInfo {
+	languages := make(map[string]api.SingerLanguageInfo, len(items))
 	for id := range items {
-		ids = append(ids, id)
+		// TODO: Populate the name and default lyric when they are available from singer metadata.
+		languages[id] = api.SingerLanguageInfo{
+			Name:         "",
+			DefaultLyric: "",
+		}
 	}
-	sort.Strings(ids)
-	return ids
+	return languages
 }
 
 func sortedSpeakerIDs(items map[string]SingerSpeaker) []string {

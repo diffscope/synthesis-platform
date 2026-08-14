@@ -28,6 +28,7 @@ const (
 	ProblemTypeInvalidParameter    ProblemType = "/problems/invalid_parameter"
 	ProblemTypeSingersUnmixable    ProblemType = "/problems/singers_unmixable"
 	ProblemTypeValidationError     ProblemType = "/problems/validation_error"
+	ProblemTypeNotImplemented      ProblemType = "/problems/not_implemented"
 )
 
 type ValidationIssue struct {

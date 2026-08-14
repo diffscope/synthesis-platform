@@ -23,6 +23,10 @@
     {
       "name": "Synthesis",
       "description": "Synthesis service endpoints."
+    },
+    {
+      "name": "Extraction",
+      "description": "Audio analysis and extraction endpoints."
     }
   ],
   "paths": {
@@ -345,6 +349,135 @@
           }
         }
       }
+    },
+    "/extractor": {
+      "get": {
+        "tags": [
+          "Extraction"
+        ],
+        "operationId": "getExtractorList",
+        "summary": "List extractors",
+        "description": "Returns the available note, tempo, and pitch extractors.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ExtractorList"
+          }
+        }
+      }
+    },
+    "/extractor/note/{extractor_id}": {
+      "get": {
+        "tags": [
+          "Extraction"
+        ],
+        "operationId": "getNoteExtractor",
+        "summary": "Get a note extractor",
+        "description": "Returns metadata for one note extractor.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExtractorID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Extractor"
+          }
+        }
+      }
+    },
+    "/extractor/tempo/{extractor_id}": {
+      "get": {
+        "tags": [
+          "Extraction"
+        ],
+        "operationId": "getTempoExtractor",
+        "summary": "Get a tempo extractor",
+        "description": "Returns metadata for one tempo extractor.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExtractorID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Extractor"
+          }
+        }
+      }
+    },
+    "/extractor/pitch/{extractor_id}": {
+      "get": {
+        "tags": [
+          "Extraction"
+        ],
+        "operationId": "getPitchExtractor",
+        "summary": "Get a pitch extractor",
+        "description": "Returns metadata for one pitch extractor.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExtractorID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Extractor"
+          }
+        }
+      }
+    },
+    "/extract/note": {
+      "post": {
+        "tags": [
+          "Extraction"
+        ],
+        "operationId": "postExtractNote",
+        "summary": "Extract notes from audio",
+        "description": "Extracts note timing and pitch from audio.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/NoteExtractionRequest"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/NoteExtractionResult"
+          }
+        }
+      }
+    },
+    "/extract/tempo": {
+      "post": {
+        "tags": [
+          "Extraction"
+        ],
+        "operationId": "postExtractTempo",
+        "summary": "Extract tempo from audio",
+        "description": "Extracts one global tempo value from audio.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/TempoExtractionRequest"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/TempoExtractionResult"
+          }
+        }
+      }
+    },
+    "/extract/pitch": {
+      "post": {
+        "tags": [
+          "Extraction"
+        ],
+        "operationId": "postExtractPitch",
+        "summary": "Extract pitch from audio",
+        "description": "Extracts a segmented pitch curve from audio.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/PitchExtractionRequest"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/PitchExtractionResult"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -375,6 +508,15 @@
           "type": "string"
         },
         "description": "Preferred language for display metadata."
+      },
+      "ExtractorID": {
+        "name": "extractor_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Extractor identifier within the selected extraction capability."
       }
     },
     "requestBodies": {
@@ -434,6 +576,36 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/AudioRequest"
+            }
+          }
+        }
+      },
+      "NoteExtractionRequest": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/NoteExtractionRequest"
+            }
+          }
+        }
+      },
+      "TempoExtractionRequest": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TempoExtractionRequest"
+            }
+          }
+        }
+      },
+      "PitchExtractionRequest": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/PitchExtractionRequest"
             }
           }
         }
@@ -604,9 +776,270 @@
             }
           }
         }
+      },
+      "ExtractorList": {
+        "description": "Available extractors grouped by capability.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ExtractorList"
+            }
+          }
+        }
+      },
+      "Extractor": {
+        "description": "Extractor metadata.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ExtractorInfo"
+            }
+          }
+        }
+      },
+      "NoteExtractionResult": {
+        "description": "Extracted notes.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/NoteExtractionResponse"
+            }
+          }
+        }
+      },
+      "TempoExtractionResult": {
+        "description": "Extracted global tempo.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TempoExtractionResponse"
+            }
+          }
+        }
+      },
+      "PitchExtractionResult": {
+        "description": "Extracted segmented pitch curve.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/PitchExtractionResponse"
+            }
+          }
+        }
       }
     },
     "schemas": {
+      "ExtractorList": {
+        "type": "object",
+        "required": [
+          "note",
+          "tempo",
+          "pitch"
+        ],
+        "properties": {
+          "note": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtractorInfo"
+            }
+          },
+          "tempo": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtractorInfo"
+            }
+          },
+          "pitch": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtractorInfo"
+            }
+          }
+        }
+      },
+      "ExtractorInfo": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "preferred_audio_sample_rate"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Extractor identifier within its extraction capability."
+          },
+          "name": {
+            "type": "string"
+          },
+          "preferred_audio_sample_rate": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Preferred input audio sample rate in Hz."
+          }
+        }
+      },
+      "NoteExtractionRequest": {
+        "$ref": "#/components/schemas/ExtractionRequest"
+      },
+      "TempoExtractionRequest": {
+        "$ref": "#/components/schemas/ExtractionRequest"
+      },
+      "PitchExtractionRequest": {
+        "$ref": "#/components/schemas/ExtractionRequest"
+      },
+      "ExtractionRequest": {
+        "type": "object",
+        "required": [
+          "extractor",
+          "input"
+        ],
+        "properties": {
+          "extractor": {
+            "type": "string",
+            "description": "Identifier of an extractor for the requested capability."
+          },
+          "input": {
+            "$ref": "#/components/schemas/ExtractionInput"
+          }
+        }
+      },
+      "ExtractionInput": {
+        "type": "object",
+        "required": [
+          "audio_url"
+        ],
+        "properties": {
+          "audio_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL of the audio to analyze."
+          }
+        }
+      },
+      "NoteExtractionResponse": {
+        "type": "object",
+        "required": [
+          "output"
+        ],
+        "properties": {
+          "output": {
+            "$ref": "#/components/schemas/NoteExtractionOutput"
+          }
+        }
+      },
+      "NoteExtractionOutput": {
+        "type": "object",
+        "required": [
+          "notes"
+        ],
+        "properties": {
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtractedNote"
+            }
+          }
+        }
+      },
+      "ExtractedNote": {
+        "type": "object",
+        "required": [
+          "position",
+          "cent"
+        ],
+        "properties": {
+          "position": {
+            "$ref": "#/components/schemas/NotePosition"
+          },
+          "cent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 12800,
+            "description": "Extracted note pitch in cents."
+          }
+        }
+      },
+      "TempoExtractionResponse": {
+        "type": "object",
+        "required": [
+          "output"
+        ],
+        "properties": {
+          "output": {
+            "$ref": "#/components/schemas/TempoExtractionOutput"
+          }
+        }
+      },
+      "TempoExtractionOutput": {
+        "type": "object",
+        "required": [
+          "tempo"
+        ],
+        "properties": {
+          "tempo": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Estimated global tempo in beats per minute."
+          }
+        }
+      },
+      "PitchExtractionResponse": {
+        "type": "object",
+        "required": [
+          "output"
+        ],
+        "properties": {
+          "output": {
+            "$ref": "#/components/schemas/PitchExtractionOutput"
+          }
+        }
+      },
+      "PitchExtractionOutput": {
+        "type": "object",
+        "required": [
+          "segments",
+          "sample_rate"
+        ],
+        "properties": {
+          "segments": {
+            "type": "array",
+            "description": "Voiced pitch segments. The array can be empty when no pitch is detected.",
+            "items": {
+              "$ref": "#/components/schemas/PitchExtractionSegment"
+            }
+          },
+          "sample_rate": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Number of pitch samples per second."
+          }
+        }
+      },
+      "PitchExtractionSegment": {
+        "type": "object",
+        "required": [
+          "gap",
+          "pitch"
+        ],
+        "properties": {
+          "gap": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of missing pitch frames before this segment. For the first segment, frames are counted from the start of the audio. For later segments, the start frame is the previous segment start plus its pitch value count plus this gap."
+          },
+          "pitch": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Pitch values in cents.",
+            "items": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 12800
+            }
+          }
+        }
+      },
       "ApplicationInfoResponse": {
         "type": "object",
         "required": [
@@ -770,9 +1203,9 @@
             "description": "Identifier shared by singers whose inference resources can be mixed."
           },
           "languages": {
-            "type": "array",
-            "items": {
-              "type": "string"
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SingerLanguageInfo"
             }
           },
           "default_language": {
@@ -783,6 +1216,21 @@
           },
           "default_extra": {
             "description": "Default architecture-specific singer JSON payload."
+          }
+        }
+      },
+      "SingerLanguageInfo": {
+        "type": "object",
+        "required": [
+          "name",
+          "default_lyric"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "default_lyric": {
+            "type": "string"
           }
         }
       },

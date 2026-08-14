@@ -129,6 +129,8 @@ func problemHTTPStatus(problemType api.ProblemType) int {
 		return http.StatusUnprocessableEntity
 	case api.ProblemTypeValidationError:
 		return http.StatusBadRequest
+	case api.ProblemTypeNotImplemented:
+		return http.StatusNotImplemented
 	default:
 		return http.StatusInternalServerError
 	}
@@ -148,6 +150,8 @@ func problemTitle(problemType api.ProblemType) string {
 		return "Singers unmixable"
 	case api.ProblemTypeValidationError:
 		return "Validation error"
+	case api.ProblemTypeNotImplemented:
+		return "Not implemented"
 	default:
 		return "Internal error"
 	}
